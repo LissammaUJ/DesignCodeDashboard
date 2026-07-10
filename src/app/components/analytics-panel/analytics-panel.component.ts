@@ -33,7 +33,12 @@ export class AnalyticsPanelComponent {
     if (!data) return null;
     return {
       labels: data.map((d) => d.label),
-      datasets: [{ data: data.map((d) => d.value), backgroundColor: '#2563eb', borderRadius: 4, barThickness: 14 }],
+      datasets: [{
+        data: data.map((d) => d.value),
+        backgroundColor: ['#2563eb', '#7c3aed', '#16a34a', '#ea580c', '#dc2626', '#64748b'],
+        borderRadius: 6,
+        barThickness: 12,
+      }],
     };
   }
 
@@ -44,9 +49,12 @@ export class AnalyticsPanelComponent {
       datasets: [{
         data: data.map((d) => d.value),
         borderColor: '#2563eb',
-        backgroundColor: 'rgba(37,99,235,0.1)',
+        backgroundColor: 'rgba(37,99,235,0.12)',
         fill: true,
         tension: 0.4,
+        pointRadius: 3,
+        pointBackgroundColor: '#2563eb',
+        borderWidth: 2,
       }],
     };
   }

@@ -1,12 +1,13 @@
 import { Component, input } from '@angular/core';
 import { SkeletonModule } from 'primeng/skeleton';
+import { TooltipModule } from 'primeng/tooltip';
 import { KpiMetric } from '../../core/models/design.models';
 import { SparklineComponent } from '../sparkline/sparkline.component';
 
 @Component({
   selector: 'app-kpi-summary',
   standalone: true,
-  imports: [SkeletonModule, SparklineComponent],
+  imports: [SkeletonModule, SparklineComponent, TooltipModule],
   templateUrl: './kpi-summary.component.html',
   styleUrl: './kpi-summary.component.scss',
 })

@@ -20,7 +20,7 @@ import { Component, input } from '@angular/core';
   styles: `
     .sparkline {
       width: 100%;
-      height: 32px;
+      height: 24px;
       display: block;
     }
   `,

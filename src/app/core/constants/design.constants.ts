@@ -1,14 +1,14 @@
 import { SelectOption } from '../models/design.models';
 
 export const CUSTOMER_OPTIONS: SelectOption[] = [
-  { label: 'ABC Jewellers', value: 'ABC Jewellers' },
-  { label: 'Royal Gems Pvt Ltd', value: 'Royal Gems Pvt Ltd' },
-  { label: 'Diamond Palace', value: 'Diamond Palace' },
-  { label: 'Golden Heritage', value: 'Golden Heritage' },
-  { label: 'Silver Spark', value: 'Silver Spark' },
-  { label: 'Platinum Craft', value: 'Platinum Craft' },
-  { label: 'Emerald House', value: 'Emerald House' },
-  { label: 'Pearl Boutique', value: 'Pearl Boutique' },
+  { label: 'ABC Jewellers', value: '1' },
+  { label: 'Royal Gems Pvt Ltd', value: '2' },
+  { label: 'Diamond Palace', value: '3' },
+  { label: 'Golden Heritage', value: '4' },
+  { label: 'Silver Spark', value: '5' },
+  { label: 'Platinum Craft', value: '6' },
+  { label: 'Emerald House', value: '7' },
+  { label: 'Pearl Boutique', value: '8' },
 ];
 
 export const BRANCH_OPTIONS: SelectOption[] = [

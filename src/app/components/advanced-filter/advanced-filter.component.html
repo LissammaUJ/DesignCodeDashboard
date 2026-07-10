@@ -1,69 +1,108 @@
 <div class="adv-filter" [class.adv-filter--collapsed]="collapsed()">
-  <div class="adv-filter__header" (click)="toggleCollapse.emit()">
+  <div
+    class="adv-filter__header"
+    (click)="toggleCollapse.emit()"
+    (keydown.enter)="toggleCollapse.emit()"
+    (keydown.space)="$event.preventDefault(); toggleCollapse.emit()"
+    tabindex="0"
+    role="button"
+    [attr.aria-expanded]="!collapsed()"
+    aria-controls="adv-filter-body"
+    aria-label="Toggle advanced filters"
+  >
     <div class="adv-filter__title">
-      <i class="pi pi-sliders-h"></i>
-      <h3>Advanced Filters</h3>
+      <i class="pi pi-filter" aria-hidden="true"></i>
+      <h3>Filters</h3>
     </div>
-    <i class="pi" [class.pi-chevron-up]="!collapsed()" [class.pi-chevron-down]="collapsed()"></i>
+    <i
+      class="pi"
+      [class.pi-chevron-up]="!collapsed()"
+      [class.pi-chevron-down]="collapsed()"
+      aria-hidden="true"
+    ></i>
   </div>
 
   @if (!collapsed()) {
-    <form [formGroup]="filterForm()" (ngSubmit)="search.emit()" class="adv-filter__body">
+    <form
+      id="adv-filter-body"
+      [formGroup]="filterForm()"
+      (ngSubmit)="onSearch()"
+      class="adv-filter__body"
+    >
       <div class="adv-filter__grid">
-        <div class="adv-filter__field">
-          <label>Customer Account</label>
-          <p-select formControlName="customerAccount" [options]="options()['customers']" optionLabel="label" optionValue="value" placeholder="All Customers" [filter]="true" [showClear]="true" appendTo="body" />
+        <div class="adv-filter__field adv-filter__field--customer">
+          <label for="customerAccount">Customer <span class="required" aria-hidden="true">*</span></label>
+          <p-select
+            inputId="customerAccount"
+            formControlName="customerAccountId"
+            [options]="options()['customers']"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Select Customer"
+            [filter]="true"
+            filterPlaceholder="Search customers..."
+            [showClear]="true"
+            appendTo="body"
+            ariaLabel="Customer Account"
+          />
+          @if (filterForm().get('customerAccountId')?.invalid && filterForm().get('customerAccountId')?.touched) {
+            <small class="error-text" role="alert">Customer Account is required</small>
+          }
         </div>
-        <div class="adv-filter__field">
-          <label>Branch</label>
-          <p-select formControlName="branch" [options]="options()['branches']" optionLabel="label" optionValue="value" placeholder="All Branches" [showClear]="true" appendTo="body" />
-        </div>
-        <div class="adv-filter__field">
-          <label>Category</label>
-          <p-select formControlName="category" [options]="options()['categories']" optionLabel="label" optionValue="value" placeholder="All Categories" [showClear]="true" appendTo="body" />
-        </div>
-        <div class="adv-filter__field">
-          <label>Sub Category</label>
-          <p-select formControlName="subCategory" [options]="options()['subCategories']" optionLabel="label" optionValue="value" placeholder="All Sub Categories" [showClear]="true" appendTo="body" />
-        </div>
-        <div class="adv-filter__field">
-          <label>Material</label>
-          <p-select formControlName="material" [options]="options()['materials']" optionLabel="label" optionValue="value" placeholder="All Materials" [showClear]="true" appendTo="body" />
-        </div>
-        <div class="adv-filter__field">
-          <label>Purity</label>
-          <p-select formControlName="purity" [options]="options()['purities']" optionLabel="label" optionValue="value" placeholder="All Purities" [showClear]="true" appendTo="body" />
-        </div>
-        <div class="adv-filter__field">
-          <label>Designer</label>
-          <p-select formControlName="designer" [options]="options()['designers']" optionLabel="label" optionValue="value" placeholder="All Designers" [filter]="true" [showClear]="true" appendTo="body" />
-        </div>
-        <div class="adv-filter__field">
-          <label>Status</label>
-          <p-select formControlName="status" [options]="options()['statuses']" optionLabel="label" optionValue="value" placeholder="All Statuses" [showClear]="true" appendTo="body" />
-        </div>
-        <div class="adv-filter__field">
-          <label>Created From</label>
-          <p-datepicker formControlName="createdFrom" dateFormat="dd-M-yy" [showIcon]="true" placeholder="From Date" appendTo="body" />
-        </div>
-        <div class="adv-filter__field">
-          <label>Created To</label>
-          <p-datepicker formControlName="createdTo" dateFormat="dd-M-yy" [showIcon]="true" placeholder="To Date" appendTo="body" />
-        </div>
-        <div class="adv-filter__field adv-filter__field--search">
-          <label>Global Search</label>
-          <p-iconfield>
-            <p-inputicon styleClass="pi pi-search" />
-            <input pInputText formControlName="globalSearch" placeholder="Search design code, ID, name, customer..." />
-          </p-iconfield>
-        </div>
-      </div>
 
-      <div class="adv-filter__actions">
-        <p-button type="submit" label="Search" icon="pi pi-search" [loading]="loading()" />
-        <p-button type="button" label="Reset" icon="pi pi-refresh" severity="secondary" [outlined]="true" (onClick)="reset.emit()" />
-        <p-button type="button" label="Export Excel" icon="pi pi-file-excel" severity="success" [outlined]="true" (onClick)="exportExcel.emit()" />
-        <p-button type="button" label="Export PDF" icon="pi pi-file-pdf" severity="danger" [outlined]="true" (onClick)="exportPdf.emit()" />
+        <div class="adv-filter__field adv-filter__field--date">
+          <label for="startDate">Start Date <span class="required" aria-hidden="true">*</span></label>
+          <p-datepicker
+            inputId="startDate"
+            formControlName="startDate"
+            dateFormat="dd-M-yy"
+            [showIcon]="true"
+            placeholder="Start Date"
+            appendTo="body"
+            ariaLabel="Start Date"
+          />
+          @if (filterForm().get('startDate')?.invalid && filterForm().get('startDate')?.touched) {
+            <small class="error-text" role="alert">Start Date is required</small>
+          }
+        </div>
+
+        <div class="adv-filter__field adv-filter__field--date">
+          <label for="endDate">End Date <span class="required" aria-hidden="true">*</span></label>
+          <p-datepicker
+            inputId="endDate"
+            formControlName="endDate"
+            dateFormat="dd-M-yy"
+            [showIcon]="true"
+            placeholder="End Date"
+            appendTo="body"
+            ariaLabel="End Date"
+          />
+          @if (filterForm().get('endDate')?.hasError('required') && filterForm().get('endDate')?.touched) {
+            <small class="error-text" role="alert">End Date is required</small>
+          }
+          @if (filterForm().get('endDate')?.hasError('dateRange')) {
+            <small class="error-text" role="alert">End Date cannot be less than Start Date</small>
+          }
+        </div>
+
+        <div class="adv-filter__actions">
+          <p-button
+            type="submit"
+            label="Search"
+            icon="pi pi-search"
+            [loading]="loading()"
+            ariaLabel="Search designs"
+          />
+          <p-button
+            type="button"
+            label="Reset"
+            icon="pi pi-refresh"
+            severity="secondary"
+            [outlined]="true"
+            ariaLabel="Reset filters"
+            (onClick)="onReset()"
+          />
+        </div>
       </div>
     </form>
   }

@@ -3,7 +3,7 @@
 @import 'bootstrap/scss/bootstrap';
 @import 'primeicons/primeicons.css';
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap');
 
 *,
 *::before,
@@ -20,11 +20,30 @@ body {
   background-color: $background;
   color: $gray-800;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-// PrimeNG overrides for enterprise look
-.p-button {
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+p, span, body {
   font-weight: 500;
+}
+
+// PrimeNG enterprise overrides
+.p-button {
+  font-weight: 600;
+  border-radius: 10px !important;
+  transition: $transition-base !important;
+  position: relative;
+  overflow: hidden;
+
+  &:focus-visible {
+    outline: 2px solid $primary;
+    outline-offset: 2px;
+  }
 }
 
 .p-card {
@@ -48,17 +67,31 @@ body {
 }
 
 .p-skeleton {
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .p-select,
 .p-datepicker,
 .p-inputtext {
   width: 100%;
+  border-radius: 10px !important;
+}
+
+.p-select:not(.p-disabled).p-focus,
+.p-inputtext:enabled:focus,
+.p-datepicker-input:focus {
+  box-shadow: 0 0 0 2px rgba($primary, 0.2) !important;
+  border-color: $primary !important;
 }
 
 .p-tag {
   font-weight: 600;
-  font-size: 0.75rem;
-  letter-spacing: 0.02em;
+  font-size: 0.6875rem;
+  letter-spacing: 0.03em;
+  border-radius: 999px !important;
+  padding: 0.3rem 0.65rem !important;
+}
+
+::selection {
+  background: rgba($primary, 0.15);
 }

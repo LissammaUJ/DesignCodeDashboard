@@ -47,7 +47,7 @@ export class DesignCardComponent {
         label: 'In Processing',
         value: this.fmtNum(d.inProcessingQuantity),
         icon: 'pi pi-cog',
-        colorClass: 'kpi-tile--cyan',
+        colorClass: 'kpi-tile--green',
         tooltip: `In Processing Quantity: ${this.fmtNum(d.inProcessingQuantity)}`,
       },
     ];

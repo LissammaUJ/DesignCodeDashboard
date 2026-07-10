@@ -36,7 +36,7 @@ export class DesignService {
   private kpiCache: { filter: string; data: DashboardKpiSummary } | null = null;
   private analyticsCache: { filter: string; data: DashboardAnalytics } | null = null;
 
-  private readonly customers = CUSTOMER_OPTIONS.map((o) => o.value);
+  private readonly customers = CUSTOMER_OPTIONS.map((o) => o.label);
   private readonly branches = BRANCH_OPTIONS.map((o) => o.value);
   private readonly categories = CATEGORY_OPTIONS.map((o) => o.value);
   private readonly subCategories = SUB_CATEGORY_OPTIONS.map((o) => o.value);
@@ -213,20 +213,32 @@ export class DesignService {
   }
 
   private matchesFilter(d: DesignListItem, filter: DesignFilter): boolean {
-    const search = filter.globalSearch?.toLowerCase().trim();
-    if (search) {
-      const haystack = `${d.designCode} ${d.designID} ${d.designName} ${d.customerAccount} ${d.category} ${d.material} ${d.designer}`.toLowerCase();
-      if (!haystack.includes(search)) return false;
+    if (filter.customerAccountId != null) {
+      const customer = CUSTOMER_OPTIONS.find((o) => Number(o.value) === filter.customerAccountId);
+      if (customer && d.customerAccount !== customer.label) return false;
     }
-    if (filter.customerAccount && d.customerAccount !== filter.customerAccount) return false;
-    if (filter.category && d.category !== filter.category) return false;
-    if (filter.subCategory && d.subCategory !== filter.subCategory) return false;
-    if (filter.material && d.material !== filter.material) return false;
-    if (filter.purity && d.purity !== filter.purity) return false;
-    if (filter.designer && d.designer !== filter.designer) return false;
-    if (filter.status && d.approvalStatus !== filter.status) return false;
-    if (filter.branch && d.designID % 5 !== this.branches.indexOf(filter.branch)) return false;
+    if (filter.startDate || filter.endDate) {
+      const created = this.parseDisplayDate(d.createdDate);
+      if (filter.startDate) {
+        const start = new Date(filter.startDate);
+        if (created < start) return false;
+      }
+      if (filter.endDate) {
+        const end = new Date(filter.endDate);
+        end.setHours(23, 59, 59, 999);
+        if (created > end) return false;
+      }
+    }
     return true;
+  }
+
+  private parseDisplayDate(value: string): Date {
+    const months: Record<string, number> = {
+      Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+      Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
+    };
+    const [day, mon, year] = value.split('-');
+    return new Date(Number(year), months[mon] ?? 0, Number(day));
   }
 
   private getOrCreateDesign(id: number): DesignListItem {

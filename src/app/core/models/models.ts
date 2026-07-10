@@ -28,9 +28,9 @@ export interface Design {
 }
 
 export interface DesignFilterRequest {
-  CustomerAccountID: number;
-  StartDate: string;
-  EndDate: string;
+  customerAccountId: number;
+  startDate: string;
+  endDate: string;
 }
 
 export interface DesignQueryParams {

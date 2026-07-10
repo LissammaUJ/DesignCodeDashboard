@@ -9,17 +9,9 @@ export interface SelectOption {
 }
 
 export interface DesignFilter {
-  customerAccount?: string;
-  branch?: string;
-  category?: string;
-  subCategory?: string;
-  material?: string;
-  purity?: string;
-  designer?: string;
-  status?: string;
-  createdFrom?: string;
-  createdTo?: string;
-  globalSearch?: string;
+  customerAccountId?: number;
+  startDate?: string;
+  endDate?: string;
 }
 
 export interface DesignQuery {

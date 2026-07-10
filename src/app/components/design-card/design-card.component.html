@@ -1,18 +1,25 @@
 <article
   class="design-card-wrap"
-  [style.animation-delay]="index() * 50 + 'ms'"
+  [style.animation-delay]="index() * 40 + 'ms'"
   (click)="onCardClick()"
   (keydown.enter)="onCardClick()"
+  (keydown.space)="$event.preventDefault(); onCardClick()"
   tabindex="0"
   role="button"
+  [attr.aria-label]="'View details for ' + design().designCode + ' — ' + design().designName"
 >
   <p-card styleClass="design-card">
     <ng-template #header>
       <div class="design-card__image">
         @if (design().imageUrl) {
-          <img [src]="design().imageUrl" [alt]="design().designName" loading="lazy" />
+          <img
+            [src]="design().imageUrl"
+            [alt]="design().designName"
+            loading="lazy"
+            decoding="async"
+          />
         } @else {
-          <div class="design-card__placeholder">
+          <div class="design-card__placeholder" aria-hidden="true">
             <i class="pi pi-image"></i>
             <span>No Image</span>
           </div>
@@ -21,6 +28,7 @@
           <p-tag
             [value]="design().approvalStatus"
             [severity]="getApprovalSeverity(design().approvalStatus)"
+            [attr.aria-label]="'Status: ' + design().approvalStatus"
           />
         </div>
       </div>
@@ -28,26 +36,29 @@
 
     <div class="design-card__identity">
       <h3 class="design-card__code">{{ design().designCode }}</h3>
-      <p class="design-card__name">{{ design().designName }}</p>
+      <p class="design-card__name" [pTooltip]="design().designName" tooltipPosition="top">
+        {{ design().designName }}
+      </p>
       <p class="design-card__customer">
-        <i class="pi pi-user"></i>
-        <span>{{ design().customerAccount }}</span>
+        <i class="pi pi-building" aria-hidden="true"></i>
+        <span [pTooltip]="design().customerAccount" tooltipPosition="top">{{ design().customerAccount }}</span>
       </p>
     </div>
 
-    <div class="design-card__kpis">
+    <div class="design-card__kpis" role="group" aria-label="Business KPIs">
       @for (kpi of kpiItems(); track kpi.label) {
         <div
           class="kpi-tile"
           [class]="kpi.colorClass"
           [pTooltip]="kpi.tooltip"
           tooltipPosition="top"
+          [attr.aria-label]="kpi.tooltip"
         >
-          <strong class="kpi-tile__value">{{ kpi.value }}</strong>
           <div class="kpi-tile__head">
-            <i class="kpi-tile__icon" [class]="kpi.icon"></i>
+            <i class="kpi-tile__icon" [class]="kpi.icon" aria-hidden="true"></i>
             <span class="kpi-tile__label">{{ kpi.label }}</span>
           </div>
+          <strong class="kpi-tile__value">{{ kpi.value }}</strong>
         </div>
       }
     </div>
@@ -57,8 +68,9 @@
         <p-button
           label="View Details"
           icon="pi pi-eye"
-          size="small"
-          styleClass="w-100"
+          severity="success"
+          styleClass="design-card__cta"
+          [attr.aria-label]="'View details for ' + design().designCode"
           (onClick)="onViewDetails($event)"
         />
       </div>

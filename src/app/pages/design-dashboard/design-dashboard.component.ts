@@ -9,7 +9,16 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DecimalPipe } from '@angular/common';
-import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule } from '@angular/forms';
+import {
+  AbstractControl,
+  FormBuilder,
+  FormGroup,
+  FormsModule,
+  ReactiveFormsModule,
+  ValidationErrors,
+  ValidatorFn,
+  Validators,
+} from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { DialogService, DynamicDialogModule } from 'primeng/dynamicdialog';
 import { PaginatorModule, PaginatorState } from 'primeng/paginator';
@@ -17,8 +26,8 @@ import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { SelectModule } from 'primeng/select';
 import { SkeletonModule } from 'primeng/skeleton';
 import { ToastModule } from 'primeng/toast';
+import { TooltipModule } from 'primeng/tooltip';
 import { MessageService } from 'primeng/api';
-import { debounceTime, distinctUntilChanged } from 'rxjs';
 import { PAGE_SIZE_OPTIONS } from '../../core/constants/design.constants';
 import {
   DashboardAnalytics,
@@ -36,6 +45,28 @@ import { DesignDetailDialogComponent } from '../../components/design-detail-dial
 import { KpiSummaryComponent } from '../../components/kpi-summary/kpi-summary.component';
 import { DesignService } from '../../services/design.service';
 
+function dateRangeValidator(): ValidatorFn {
+  return (group: AbstractControl): ValidationErrors | null => {
+    const start = group.get('startDate')?.value as Date | null;
+    const endCtrl = group.get('endDate');
+    const end = endCtrl?.value as Date | null;
+
+    if (!endCtrl) return null;
+
+    if (start && end && end < start) {
+      endCtrl.setErrors({ ...(endCtrl.errors ?? {}), dateRange: true });
+      return { dateRange: true };
+    }
+
+    if (endCtrl.hasError('dateRange')) {
+      const { dateRange: _, ...rest } = endCtrl.errors ?? {};
+      endCtrl.setErrors(Object.keys(rest).length ? rest : null);
+    }
+
+    return null;
+  };
+}
+
 @Component({
   selector: 'app-design-dashboard',
   standalone: true,
@@ -49,6 +80,7 @@ import { DesignService } from '../../services/design.service';
     ProgressSpinnerModule,
     SkeletonModule,
     ToastModule,
+    TooltipModule,
     DynamicDialogModule,
     KpiSummaryComponent,
     AdvancedFilterComponent,
@@ -68,19 +100,14 @@ export class DesignDashboardComponent implements OnInit {
 
   readonly scrollSentinel = viewChild<ElementRef>('scrollSentinel');
 
-  readonly filterForm: FormGroup = this.fb.group({
-    customerAccount: [null],
-    branch: [null],
-    category: [null],
-    subCategory: [null],
-    material: [null],
-    purity: [null],
-    designer: [null],
-    status: [null],
-    createdFrom: [null],
-    createdTo: [null],
-    globalSearch: [''],
-  });
+  readonly filterForm: FormGroup = this.fb.group(
+    {
+      customerAccountId: [null, Validators.required],
+      startDate: [null, Validators.required],
+      endDate: [null, Validators.required],
+    },
+    { validators: dateRangeValidator() }
+  );
 
   readonly filterOptions = this.designService.getFilterOptions();
   readonly pageSizeOptions = PAGE_SIZE_OPTIONS.map((v) => ({ label: String(v), value: v }));
@@ -95,6 +122,7 @@ export class DesignDashboardComponent implements OnInit {
   readonly loadingMore = signal(false);
   readonly filterCollapsed = signal(false);
   readonly showAnalytics = signal(true);
+  readonly currentDateTime = signal(this.formatDateTime(new Date()));
 
   readonly currentPage = signal(1);
   readonly pageSize = signal(12);
@@ -115,34 +143,44 @@ export class DesignDashboardComponent implements OnInit {
   ];
 
   private observer: IntersectionObserver | null = null;
+  private clockTimer: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
     this.loadDashboard();
-    this.setupDebouncedSearch();
     this.setupInfiniteScroll();
+    this.startClock();
   }
 
   onSearch(): void {
+    if (this.filterForm.invalid) {
+      this.filterForm.markAllAsTouched();
+      return;
+    }
     this.currentPage.set(1);
     this.designs.set([]);
     this.loadDashboard();
   }
 
+  onRefresh(): void {
+    this.designService.clearCache();
+    this.currentPage.set(1);
+    this.designs.set([]);
+    this.loadDashboard();
+    this.currentDateTime.set(this.formatDateTime(new Date()));
+    this.messageService.add({
+      severity: 'info',
+      summary: 'Refreshed',
+      detail: 'Dashboard data updated.',
+    });
+  }
+
   onReset(): void {
-    this.filterForm.reset({ globalSearch: '' });
+    this.filterForm.reset();
     this.currentPage.set(1);
     this.designs.set([]);
     this.designService.clearCache();
     this.loadDashboard();
     this.messageService.add({ severity: 'secondary', summary: 'Reset', detail: 'Filters cleared.' });
-  }
-
-  onExportExcel(): void {
-    this.messageService.add({ severity: 'success', summary: 'Export', detail: 'Excel export started.' });
-  }
-
-  onExportPdf(): void {
-    this.messageService.add({ severity: 'success', summary: 'Export', detail: 'PDF export started.' });
   }
 
   onPageChange(event: PaginatorState): void {
@@ -232,17 +270,6 @@ export class DesignDashboardComponent implements OnInit {
       });
   }
 
-  private setupDebouncedSearch(): void {
-    this.filterForm
-      .get('globalSearch')
-      ?.valueChanges.pipe(debounceTime(500), distinctUntilChanged(), takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
-        this.currentPage.set(1);
-        this.designs.set([]);
-        this.fetchDesigns(false);
-      });
-  }
-
   private setupInfiniteScroll(): void {
     if (typeof IntersectionObserver === 'undefined') return;
 
@@ -270,21 +297,33 @@ export class DesignDashboardComponent implements OnInit {
   private buildFilter(): DesignFilter {
     const v = this.filterForm.value;
     return {
-      customerAccount: v.customerAccount || undefined,
-      branch: v.branch || undefined,
-      category: v.category || undefined,
-      subCategory: v.subCategory || undefined,
-      material: v.material || undefined,
-      purity: v.purity || undefined,
-      designer: v.designer || undefined,
-      status: v.status || undefined,
-      createdFrom: v.createdFrom ? this.formatDate(v.createdFrom) : undefined,
-      createdTo: v.createdTo ? this.formatDate(v.createdTo) : undefined,
-      globalSearch: v.globalSearch || undefined,
+      customerAccountId: v.customerAccountId != null ? Number(v.customerAccountId) : undefined,
+      startDate: v.startDate ? this.formatDate(v.startDate) : undefined,
+      endDate: v.endDate ? this.formatDate(v.endDate) : undefined,
     };
   }
 
   private formatDate(d: Date): string {
     return d.toISOString().split('T')[0];
+  }
+
+  private formatDateTime(d: Date): string {
+    return d.toLocaleString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+
+  private startClock(): void {
+    this.clockTimer = setInterval(() => {
+      this.currentDateTime.set(this.formatDateTime(new Date()));
+    }, 30_000);
+
+    this.destroyRef.onDestroy(() => {
+      if (this.clockTimer) clearInterval(this.clockTimer);
+    });
   }
 }
