@@ -1,0 +1,70 @@
+<div class="adv-filter" [class.adv-filter--collapsed]="collapsed()">
+  <div class="adv-filter__header" (click)="toggleCollapse.emit()">
+    <div class="adv-filter__title">
+      <i class="pi pi-sliders-h"></i>
+      <h3>Advanced Filters</h3>
+    </div>
+    <i class="pi" [class.pi-chevron-up]="!collapsed()" [class.pi-chevron-down]="collapsed()"></i>
+  </div>
+
+  @if (!collapsed()) {
+    <form [formGroup]="filterForm()" (ngSubmit)="search.emit()" class="adv-filter__body">
+      <div class="adv-filter__grid">
+        <div class="adv-filter__field">
+          <label>Customer Account</label>
+          <p-select formControlName="customerAccount" [options]="options()['customers']" optionLabel="label" optionValue="value" placeholder="All Customers" [filter]="true" [showClear]="true" appendTo="body" />
+        </div>
+        <div class="adv-filter__field">
+          <label>Branch</label>
+          <p-select formControlName="branch" [options]="options()['branches']" optionLabel="label" optionValue="value" placeholder="All Branches" [showClear]="true" appendTo="body" />
+        </div>
+        <div class="adv-filter__field">
+          <label>Category</label>
+          <p-select formControlName="category" [options]="options()['categories']" optionLabel="label" optionValue="value" placeholder="All Categories" [showClear]="true" appendTo="body" />
+        </div>
+        <div class="adv-filter__field">
+          <label>Sub Category</label>
+          <p-select formControlName="subCategory" [options]="options()['subCategories']" optionLabel="label" optionValue="value" placeholder="All Sub Categories" [showClear]="true" appendTo="body" />
+        </div>
+        <div class="adv-filter__field">
+          <label>Material</label>
+          <p-select formControlName="material" [options]="options()['materials']" optionLabel="label" optionValue="value" placeholder="All Materials" [showClear]="true" appendTo="body" />
+        </div>
+        <div class="adv-filter__field">
+          <label>Purity</label>
+          <p-select formControlName="purity" [options]="options()['purities']" optionLabel="label" optionValue="value" placeholder="All Purities" [showClear]="true" appendTo="body" />
+        </div>
+        <div class="adv-filter__field">
+          <label>Designer</label>
+          <p-select formControlName="designer" [options]="options()['designers']" optionLabel="label" optionValue="value" placeholder="All Designers" [filter]="true" [showClear]="true" appendTo="body" />
+        </div>
+        <div class="adv-filter__field">
+          <label>Status</label>
+          <p-select formControlName="status" [options]="options()['statuses']" optionLabel="label" optionValue="value" placeholder="All Statuses" [showClear]="true" appendTo="body" />
+        </div>
+        <div class="adv-filter__field">
+          <label>Created From</label>
+          <p-datepicker formControlName="createdFrom" dateFormat="dd-M-yy" [showIcon]="true" placeholder="From Date" appendTo="body" />
+        </div>
+        <div class="adv-filter__field">
+          <label>Created To</label>
+          <p-datepicker formControlName="createdTo" dateFormat="dd-M-yy" [showIcon]="true" placeholder="To Date" appendTo="body" />
+        </div>
+        <div class="adv-filter__field adv-filter__field--search">
+          <label>Global Search</label>
+          <p-iconfield>
+            <p-inputicon styleClass="pi pi-search" />
+            <input pInputText formControlName="globalSearch" placeholder="Search design code, ID, name, customer..." />
+          </p-iconfield>
+        </div>
+      </div>
+
+      <div class="adv-filter__actions">
+        <p-button type="submit" label="Search" icon="pi pi-search" [loading]="loading()" />
+        <p-button type="button" label="Reset" icon="pi pi-refresh" severity="secondary" [outlined]="true" (onClick)="reset.emit()" />
+        <p-button type="button" label="Export Excel" icon="pi pi-file-excel" severity="success" [outlined]="true" (onClick)="exportExcel.emit()" />
+        <p-button type="button" label="Export PDF" icon="pi pi-file-pdf" severity="danger" [outlined]="true" (onClick)="exportPdf.emit()" />
+      </div>
+    </form>
+  }
+</div>

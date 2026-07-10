@@ -1,0 +1,141 @@
+<p-toast position="top-right" />
+
+<div class="erp-dashboard">
+  <!-- Gradient Header -->
+  <header class="erp-dashboard__hero">
+    <div class="erp-dashboard__hero-content">
+      <div class="erp-dashboard__hero-icon"><i class="pi pi-palette"></i></div>
+      <div>
+        <h1>Design Code Dashboard</h1>
+        <p>Manage and View Design Codes</p>
+      </div>
+    </div>
+    <div class="erp-dashboard__hero-actions">
+      <p-button
+        [icon]="showAnalytics() ? 'pi pi-chart-bar' : 'pi pi-chart-bar'"
+        [label]="showAnalytics() ? 'Hide Analytics' : 'Show Analytics'"
+        [outlined]="true"
+        severity="contrast"
+        (onClick)="toggleAnalytics()"
+      />
+      @if (kpiSummary()) {
+        <span class="erp-dashboard__updated">
+          <i class="pi pi-sync"></i> {{ kpiSummary()!.lastUpdated }}
+        </span>
+      }
+    </div>
+  </header>
+
+  <!-- KPI Summary -->
+  <section class="erp-dashboard__section">
+    <app-kpi-summary
+      [metrics]="kpiSummary()?.metrics ?? []"
+      [loading]="kpiLoading()"
+    />
+  </section>
+
+  <!-- Advanced Filter -->
+  <section class="erp-dashboard__section">
+    <app-advanced-filter
+      [filterForm]="filterForm"
+      [options]="filterOptions"
+      [loading]="loading()"
+      [collapsed]="filterCollapsed()"
+      (search)="onSearch()"
+      (reset)="onReset()"
+      (exportExcel)="onExportExcel()"
+      (exportPdf)="onExportPdf()"
+      (toggleCollapse)="toggleFilterCollapse()"
+    />
+  </section>
+
+  <!-- Main Layout -->
+  <div class="erp-dashboard__layout" [class.erp-dashboard__layout--full]="!showAnalytics()">
+    <!-- Design Grid -->
+    <main class="erp-dashboard__main">
+      <div class="erp-dashboard__toolbar">
+        <span class="erp-dashboard__result-count">
+          Showing <strong>{{ designs().length }}</strong> of <strong>{{ totalRecords() | number }}</strong> designs
+        </span>
+        <div class="erp-dashboard__toolbar-right">
+          <p-select
+            [options]="sortByOptions"
+            [ngModel]="sortBy()"
+            (ngModelChange)="sortBy.set($event); onSearch()"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Sort By"
+            styleClass="erp-dashboard__select"
+          />
+          <p-select
+            [options]="sortOrderOptions"
+            [ngModel]="sortOrder()"
+            (ngModelChange)="sortOrder.set($event); onSearch()"
+            optionLabel="label"
+            optionValue="value"
+            styleClass="erp-dashboard__select"
+          />
+        </div>
+      </div>
+
+      @if (loading() && designs().length === 0) {
+        <div class="erp-dashboard__skeleton-grid">
+          @for (i of [1,2,3,4,5,6,7,8]; track i) {
+            <p-skeleton height="300px" borderRadius="12px" />
+          }
+        </div>
+      } @else if (designs().length === 0) {
+        <div class="erp-dashboard__empty">
+          <i class="pi pi-inbox"></i>
+          <h3>No Designs Found</h3>
+          <p>Adjust your filters or search criteria.</p>
+        </div>
+      } @else {
+        <div class="erp-dashboard__grid">
+          @for (design of designs(); track design.designID; let i = $index) {
+            <app-design-card
+              [design]="design"
+              [index]="i"
+              (cardClick)="onCardClick($event)"
+              (action)="onCardAction($event)"
+            />
+          }
+        </div>
+
+        <!-- Infinite Scroll Sentinel -->
+        <div #scrollSentinel class="erp-dashboard__sentinel">
+          @if (loadingMore()) {
+            <p-progressSpinner strokeWidth="3" [style]="{ width: '36px', height: '36px' }" />
+            <span>Loading more designs...</span>
+          }
+        </div>
+
+        <!-- Server-side Pagination -->
+        <div class="erp-dashboard__pagination">
+          <p-paginator
+            [rows]="pageSize()"
+            [totalRecords]="totalRecords()"
+            [first]="(currentPage() - 1) * pageSize()"
+            [rowsPerPageOptions]="pageSizeOptions"
+            (onPageChange)="onPageChange($event)"
+            [showCurrentPageReport]="true"
+            currentPageReportTemplate="Page {currentPage} of {totalPages} | {totalRecords} records"
+          />
+        </div>
+      }
+    </main>
+
+    <!-- Analytics Sidebar -->
+    @if (showAnalytics()) {
+      <aside class="erp-dashboard__analytics">
+        <div class="erp-dashboard__analytics-header">
+          <h3><i class="pi pi-chart-pie"></i> Analytics</h3>
+        </div>
+        <app-analytics-panel
+          [analytics]="analytics()"
+          [loading]="analyticsLoading()"
+        />
+      </aside>
+    }
+  </div>
+</div>

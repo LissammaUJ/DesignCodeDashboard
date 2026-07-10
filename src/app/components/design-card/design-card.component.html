@@ -1,0 +1,67 @@
+<article
+  class="design-card-wrap"
+  [style.animation-delay]="index() * 50 + 'ms'"
+  (click)="onCardClick()"
+  (keydown.enter)="onCardClick()"
+  tabindex="0"
+  role="button"
+>
+  <p-card styleClass="design-card">
+    <ng-template #header>
+      <div class="design-card__image">
+        @if (design().imageUrl) {
+          <img [src]="design().imageUrl" [alt]="design().designName" loading="lazy" />
+        } @else {
+          <div class="design-card__placeholder">
+            <i class="pi pi-image"></i>
+            <span>No Image</span>
+          </div>
+        }
+        <div class="design-card__badge">
+          <p-tag
+            [value]="design().approvalStatus"
+            [severity]="getApprovalSeverity(design().approvalStatus)"
+          />
+        </div>
+      </div>
+    </ng-template>
+
+    <div class="design-card__identity">
+      <h3 class="design-card__code">{{ design().designCode }}</h3>
+      <p class="design-card__name">{{ design().designName }}</p>
+      <p class="design-card__customer">
+        <i class="pi pi-user"></i>
+        <span>{{ design().customerAccount }}</span>
+      </p>
+    </div>
+
+    <div class="design-card__kpis">
+      @for (kpi of kpiItems(); track kpi.label) {
+        <div
+          class="kpi-tile"
+          [class]="kpi.colorClass"
+          [pTooltip]="kpi.tooltip"
+          tooltipPosition="top"
+        >
+          <strong class="kpi-tile__value">{{ kpi.value }}</strong>
+          <div class="kpi-tile__head">
+            <i class="kpi-tile__icon" [class]="kpi.icon"></i>
+            <span class="kpi-tile__label">{{ kpi.label }}</span>
+          </div>
+        </div>
+      }
+    </div>
+
+    <ng-template #footer>
+      <div class="design-card__footer">
+        <p-button
+          label="View Details"
+          icon="pi pi-eye"
+          size="small"
+          styleClass="w-100"
+          (onClick)="onViewDetails($event)"
+        />
+      </div>
+    </ng-template>
+  </p-card>
+</article>
