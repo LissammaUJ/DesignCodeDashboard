@@ -1,0 +1,21 @@
+# DesignDashboard.Api — analyzer defaults (safe, non-noisy)
+root = true
+
+[*.cs]
+# Prefer modern C# defaults
+csharp_style_namespace_declarations = file_scoped:suggestion
+csharp_style_var_for_built_in_types = true:silent
+csharp_style_var_when_type_is_apparent = true:silent
+csharp_style_var_elsewhere = true:silent
+csharp_style_prefer_primary_constructors = true:suggestion
+dotnet_style_prefer_collection_expression = true:suggestion
+
+# Do not fail/noise the build on pure style opinions
+dotnet_diagnostic.IDE0005.severity = none
+dotnet_diagnostic.IDE0008.severity = none
+dotnet_diagnostic.IDE0022.severity = none
+dotnet_diagnostic.IDE0058.severity = none
+dotnet_diagnostic.IDE0160.severity = none
+dotnet_diagnostic.IDE0161.severity = none
+dotnet_diagnostic.CA1848.severity = suggestion
+dotnet_diagnostic.CA1859.severity = suggestion

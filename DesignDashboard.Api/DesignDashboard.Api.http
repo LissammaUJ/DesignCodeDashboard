@@ -1,0 +1,17 @@
+### Design Dashboard API — sample requests
+@baseUrl = http://localhost:5000
+
+### 1) Active customers
+GET {{baseUrl}}/api/customer
+
+### 2) Designs by customer + date range (use an account that has bills)
+GET {{baseUrl}}/api/designs?customerAccountId=1686&startDate=2024-01-01&endDate=2026-12-31
+
+### 3) Design detail
+GET {{baseUrl}}/api/design/6634?customerAccountId=1686&startDate=2024-01-01&endDate=2026-12-31
+
+### 4) Dashboard summary
+GET {{baseUrl}}/api/dashboard/summary?customerAccountId=1686&startDate=2024-01-01&endDate=2026-12-31
+
+### 5) Dashboard charts
+GET {{baseUrl}}/api/dashboard/charts?customerAccountId=1686&startDate=2024-01-01&endDate=2026-12-31

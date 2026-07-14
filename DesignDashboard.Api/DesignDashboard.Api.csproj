@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <!-- Use net8.0 when the .NET 8 runtime/SDK is installed. net10.0 is set for local runnability. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>DesignDashboard.Api</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- Default to HTTP so Swagger Execute avoids HTTPS cert / Failed to fetch issues. -->
+    <LaunchProfileName>http</LaunchProfileName>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <!-- Style stays IDE-only; avoid flooding builds with IDE00xx noise. -->
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <NoWarn>$(NoWarn);1591;IDE0005;IDE0008;IDE0022;IDE0058;IDE0160;IDE0161</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.66" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.2" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.3" />
+  </ItemGroup>
+
+  <!--
+    MSB3027/MSB3021: DesignDashboard.Api.exe stays locked when a previous debug/run
+    (VS, Cursor, or `dotnet run`) is still alive. Stop it before Build so rebuilds
+    succeed without restarting Visual Studio.
+  -->
+  <Target Name="StopRunningApiBeforeBuild" BeforeTargets="BeforeBuild">
+    <Exec Command="taskkill /F /IM DesignDashboard.Api.exe /T &gt;NUL 2&gt;NUL"
+          IgnoreExitCode="true"
+          Condition="'$(OS)' == 'Windows_NT'" />
+  </Target>
+
+</Project>
