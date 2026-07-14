@@ -54,8 +54,8 @@
   <section class="erp-dashboard__section" aria-label="Search filters">
     <app-advanced-filter
       [filterForm]="filterForm"
-      [options]="filterOptions"
-      [loading]="loading()"
+      [options]="filterOptions()"
+      [loading]="loading() || customersLoading()"
       [collapsed]="filterCollapsed()"
       (search)="onSearch()"
       (reset)="onReset()"
@@ -75,7 +75,7 @@
           <p-select
             [options]="sortByOptions"
             [ngModel]="sortBy()"
-            (ngModelChange)="sortBy.set($event); onSearch()"
+            (ngModelChange)="onSortByChange($event)"
             optionLabel="label"
             optionValue="value"
             placeholder="Sort By"
@@ -85,7 +85,7 @@
           <p-select
             [options]="sortOrderOptions"
             [ngModel]="sortOrder()"
-            (ngModelChange)="sortOrder.set($event); onSearch()"
+            (ngModelChange)="onSortOrderChange($event)"
             optionLabel="label"
             optionValue="value"
             styleClass="erp-dashboard__select"
@@ -103,8 +103,16 @@
       } @else if (designs().length === 0) {
         <div class="erp-dashboard__empty" role="status">
           <i class="pi pi-inbox" aria-hidden="true"></i>
-          <h3>No Designs Found</h3>
-          <p>Adjust your filters or search criteria.</p>
+          @if (designsError()) {
+            <h3>Unable to load designs</h3>
+            <p>{{ designsError() }}</p>
+          } @else if (!hasSearched()) {
+            <h3>No Designs Found</h3>
+            <p>Select Customer, Start Date, End Date, then click Search.</p>
+          } @else {
+            <h3>No Designs Found</h3>
+            <p>No bill sales for this customer and date range. Try Account 1686 with 2024-01-01 to today.</p>
+          }
         </div>
       } @else {
         <div class="erp-dashboard__grid">

@@ -15,8 +15,9 @@ import { TooltipModule } from 'primeng/tooltip';
 import { ToastModule } from 'primeng/toast';
 import { SkeletonModule } from 'primeng/skeleton';
 import { MessageService } from 'primeng/api';
-import { DesignDetail } from '../../core/models/design.models';
-import { DesignService } from '../../services/design.service';
+import { DesignDetail, DesignFilter } from '../../core/models/design.models';
+import { DesignApiService } from '../../services/design-api.service';
+import { mapDesignDetail } from '../../shared/design-api.mapper';
 
 @Component({
   selector: 'app-design-detail-dialog',
@@ -48,16 +49,22 @@ import { DesignService } from '../../services/design.service';
 export class DesignDetailDialogComponent implements OnInit {
   private readonly config = inject(DynamicDialogConfig);
   private readonly ref = inject(DynamicDialogRef);
-  private readonly designService = inject(DesignService);
+  private readonly designApi = inject(DesignApiService);
   private readonly messageService = inject(MessageService);
 
   readonly orderTable = viewChild<Table>('orderTable');
 
   readonly detail = signal<DesignDetail | null>(null);
   readonly loading = signal(true);
+  readonly loadError = signal<string | null>(null);
   readonly activeImageIndex = signal(0);
   readonly zoomed = signal(false);
   readonly orderSearch = signal('');
+
+  /** Backend has no production / warehouse inventory / timeline payloads. */
+  readonly hasProductionData = signal(false);
+  readonly hasInventoryData = signal(false);
+  readonly hasTimelineData = signal(false);
 
   readonly barOpts = {
     responsive: true,
@@ -67,9 +74,42 @@ export class DesignDetailDialogComponent implements OnInit {
 
   ngOnInit(): void {
     const designID = this.config.data?.designID as number;
-    this.designService.getDesignDetail(designID).subscribe({
-      next: (d) => { this.detail.set(d); this.loading.set(false); },
-      error: () => this.loading.set(false),
+    const filter = this.config.data?.filter as DesignFilter | undefined;
+
+    if (!designID) {
+      this.loading.set(false);
+      this.loadError.set('Design ID is missing.');
+      return;
+    }
+
+    const apiFilter =
+      filter?.customerAccountId != null && filter.startDate && filter.endDate
+        ? {
+            customerAccountId: filter.customerAccountId,
+            startDate: filter.startDate,
+            endDate: filter.endDate,
+          }
+        : undefined;
+
+    this.designApi.getDesignById(designID, apiFilter).subscribe({
+      next: (dto) => {
+        const mapped = mapDesignDetail(dto);
+        this.detail.set(mapped);
+        this.hasTimelineData.set(mapped.timeline.length > 0);
+        // Production & warehouse inventory are not on DesignDetailDto
+        this.hasProductionData.set(false);
+        this.hasInventoryData.set(false);
+        this.loading.set(false);
+      },
+      error: (err) => {
+        this.loading.set(false);
+        this.loadError.set(err?.message ?? 'Failed to load design details.');
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Load failed',
+          detail: err?.message ?? 'Unable to load design from API.',
+        });
+      },
     });
   }
 
@@ -99,18 +139,40 @@ export class DesignDetailDialogComponent implements OnInit {
     return d.images[this.activeImageIndex()] || d.imageUrl || '';
   }
 
+  hasMonthlySales(): boolean {
+    return (this.detail()?.sales.monthlySales.length ?? 0) > 0;
+  }
+
+  hasYearlySales(): boolean {
+    return (this.detail()?.sales.yearlySales.length ?? 0) > 0;
+  }
+
+  hasOrders(): boolean {
+    return (this.detail()?.orders.length ?? 0) > 0;
+  }
+
+  /** Weight fields not on API — avoid showing fake 0 g. */
+  hasNetWeight(): boolean {
+    const d = this.detail();
+    return d != null && d.general.netWeight > 0;
+  }
+
+  hasGrossWeight(): boolean {
+    return false;
+  }
+
   monthlyChart() {
     const d = this.detail();
-    if (!d) return null;
+    if (!d?.sales.monthlySales.length) return null;
     return {
       labels: d.sales.monthlySales.map((m) => m.month),
-      datasets: [{ data: d.sales.monthlySales.map((m) => m.quantity), backgroundColor: '#2563eb', borderRadius: 4 }],
+      datasets: [{ data: d.sales.monthlySales.map((m) => m.value), backgroundColor: '#2563eb', borderRadius: 4 }],
     };
   }
 
   yearlyChart() {
     const d = this.detail();
-    if (!d) return null;
+    if (!d?.sales.yearlySales.length) return null;
     return {
       labels: d.sales.yearlySales.map((y) => y.year),
       datasets: [{ data: d.sales.yearlySales.map((y) => y.value), backgroundColor: '#7c3aed', borderRadius: 4 }],

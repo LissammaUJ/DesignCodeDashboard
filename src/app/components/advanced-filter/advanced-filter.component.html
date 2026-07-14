@@ -35,13 +35,14 @@
           <p-select
             inputId="customerAccount"
             formControlName="customerAccountId"
-            [options]="options()['customers']"
+            [options]="options()['customers'] || []"
             optionLabel="label"
             optionValue="value"
-            placeholder="Select Customer"
+            [placeholder]="(options()['customers']?.length ?? 0) > 0 ? 'Select Customer' : 'Loading customers...'"
             [filter]="true"
             filterPlaceholder="Search customers..."
             [showClear]="true"
+            [loading]="loading()"
             appendTo="body"
             ariaLabel="Customer Account"
           />
