@@ -385,7 +385,7 @@ export class DesignDashboardComponent implements OnInit {
     console.info('[Designs] GET /api/customer-sales', filter);
 
     const customerAccount =
-      this.filterOptions().customers.find((c) => c.value === String(filter.customerAccountId))
+      this.filterOptions()['customers']?.find((c) => c.value === String(filter.customerAccountId))
         ?.label ?? '';
 
     this.customerSalesApi.getCustomerSales(filter).subscribe({
