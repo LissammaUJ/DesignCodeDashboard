@@ -54,7 +54,7 @@ app.UseMiddleware<GlobalExceptionMiddleware>();
 
 // Development: Swagger → CORS → Authentication → Authorization → Controllers
 // No UseHttpsRedirection() in Development (avoids missing developer cert failures).
-// URL binding comes from launchSettings.json (http://localhost:5000) only —
+// URL binding comes from launchSettings.json (http://localhost:100) only —
 // do not also set Kestrel:Endpoints in appsettings.Development.json.
 if (app.Environment.IsDevelopment())
 {
@@ -74,9 +74,24 @@ if (!app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }
-
+app.UseDefaultFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        // Prevent browsers from caching index.html (old hashes → stale apiUrl like localhost:5000).
+        if (string.Equals(ctx.File.Name, "index.html", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Context.Response.Headers.CacheControl = "no-cache, no-store, must-revalidate";
+            ctx.Context.Response.Headers.Pragma = "no-cache";
+            ctx.Context.Response.Headers.Expires = "0";
+        }
+    }
+});
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+app.MapFallbackToFile("index.html");
 
 app.Run();

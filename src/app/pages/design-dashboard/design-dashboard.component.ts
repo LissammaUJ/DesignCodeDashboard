@@ -43,6 +43,7 @@ import { AnalyticsPanelComponent } from '../../components/analytics-panel/analyt
 import { DesignCardComponent } from '../../components/design-card/design-card.component';
 import { DesignDetailDialogComponent } from '../../components/design-detail-dialog/design-detail-dialog.component';
 import { KpiSummaryComponent } from '../../components/kpi-summary/kpi-summary.component';
+import { environment } from '../../environments/environment';
 import { CustomerApiService } from '../../services/customer-api.service';
 import { CustomerSalesApiService } from '../../services/customer-sales-api.service';
 import { DashboardApiService } from '../../services/dashboard-api.service';
@@ -418,7 +419,7 @@ export class DesignDashboardComponent implements OnInit {
         this.totalRecords.set(0);
         const msg =
           err?.status === 0
-            ? 'Cannot reach API at http://localhost:5000. Start DesignDashboard.Api then Search again.'
+            ? `Cannot reach API at ${environment.apiUrl}. Start DesignDashboard.Api then Search again.`
             : (err?.message ?? 'Failed to load designs from API.');
         this.designsError.set(msg);
         this.messageService.add({

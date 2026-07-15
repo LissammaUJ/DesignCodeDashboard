@@ -1,4 +1,5 @@
 export const environment = {
   production: true,
-  apiUrl: 'http://localhost:5000/api',
+  // Same-origin when hosted by DesignDashboard.Api static files.
+  apiUrl: '/api',
 };

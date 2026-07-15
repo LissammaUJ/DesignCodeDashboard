@@ -1,7 +1,25 @@
+# Visual Studio
 .vs/
-**/bin/
-**/obj/
 *.user
 *.suo
+
+# Build output
+**/bin/
+**/obj/
+dist/
+.angular/
+
+# Node
+node_modules/
+
+# Logs
 *.log
-design-code-dashboard/
+
+# ASP.NET Publish
+DesignDashboard.Api/publish/
+
+# Local tools
+DesignDashboard.Api/dotnet-tools.json
+
+# HTTP scratch file (optional)
+DesignDashboard.Api/DesignDashboard.Api.http

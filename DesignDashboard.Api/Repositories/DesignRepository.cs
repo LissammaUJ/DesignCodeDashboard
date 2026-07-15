@@ -125,6 +125,9 @@ public sealed class DesignRepository(
             var monthly = await QueryMonthlySalesAsync(connection, filterParams, cancellationToken);
             var yearly = await QueryYearlySalesAsync(connection, filterParams, cancellationToken);
             var lastSold = await QueryLastSoldDateAsync(connection, filterParams, cancellationToken);
+            var production = await QueryProductionAsync(connection, designId, cancellationToken);
+            var inventory = await QueryInventoryAsync(connection, designId, cancellationToken);
+            var activityTimeline = await QueryActivityTimelineAsync(connection, designId, cancellationToken);
 
             var accountId = filter?.CustomerAccountId > 0
                 ? filter.CustomerAccountId
@@ -170,7 +173,10 @@ public sealed class DesignRepository(
                     },
                 Orders = orders,
                 MonthlySales = monthly,
-                YearlySales = yearly
+                YearlySales = yearly,
+                Production = production,
+                Inventory = inventory,
+                ActivityTimeline = activityTimeline
             };
         }
         catch (Exception ex)
@@ -404,6 +410,198 @@ public sealed class DesignRepository(
 
         return connection.QuerySingleOrDefaultAsync<DateTime?>(
             new CommandDefinition(sql, filterParams, cancellationToken: cancellationToken));
+    }
+
+    private static async Task<IReadOnlyList<DesignProductionDto>> QueryProductionAsync(
+        IDbConnection connection,
+        int designId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT
+                SUM(pt.Quantity) AS ProductionQuantity,
+                SUM(CASE WHEN ISNULL(pm.Closed, 0) = 1 THEN pt.Quantity ELSE 0 END) AS CompletedQuantity,
+                SUM(CASE WHEN ISNULL(pm.Closed, 0) = 0 THEN pt.Quantity ELSE 0 END) AS PendingQuantity,
+                SUM(ISNULL(pt.RejQty, 0)) AS RejectedQuantity,
+                ISNULL(MAX(m.MachineName), '') AS Machine,
+                ISNULL(MAX(pr.ProcessName), '') AS Department,
+                ISNULL(MAX(e.EmplName), '') AS Supervisor
+            FROM ProdSlip_trn pt
+            INNER JOIN ProdSlip_mas pm ON pm.ProdSlipId = pt.ProdSlipId
+            LEFT JOIN Process pr ON pr.ProcessId = COALESCE(pt.ProcessId, pm.ProcessId)
+            LEFT JOIN Machine m ON m.MachineId = pt.MachineId
+            LEFT JOIN Employee e ON e.EmplId = COALESCE(pm.InspEmplId, pm.Saved_Emp)
+            WHERE pt.DesignId = @DesignId
+            GROUP BY
+                ISNULL(m.MachineName, ''),
+                ISNULL(pr.ProcessName, ''),
+                ISNULL(e.EmplName, '')
+            HAVING SUM(pt.Quantity) <> 0 OR SUM(ISNULL(pt.RejQty, 0)) <> 0
+            ORDER BY SUM(pt.Quantity) DESC;
+            """;
+
+        var rows = await connection.QueryAsync<DesignProductionRow>(
+            new CommandDefinition(sql, new { DesignId = designId }, cancellationToken: cancellationToken));
+
+        return [.. rows.Select(r => new DesignProductionDto
+        {
+            ProductionQuantity = r.ProductionQuantity,
+            CompletedQuantity = r.CompletedQuantity,
+            PendingQuantity = r.PendingQuantity,
+            RejectedQuantity = r.RejectedQuantity,
+            Machine = r.Machine?.Trim() ?? string.Empty,
+            Department = r.Department?.Trim() ?? string.Empty,
+            Supervisor = r.Supervisor?.Trim() ?? string.Empty
+        })];
+    }
+
+    private static async Task<IReadOnlyList<DesignInventoryDto>> QueryInventoryAsync(
+        IDbConnection connection,
+        int designId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT
+                SUM(ISNULL(sd.RecQty, 0) - ISNULL(sd.IssQty, 0)) AS CurrentStock,
+                ISNULL(MAX(reserved.ReservedQty), 0) AS ReservedStock,
+                SUM(ISNULL(sd.RecQty, 0) - ISNULL(sd.IssQty, 0))
+                    - ISNULL(MAX(reserved.ReservedQty), 0) AS AvailableStock,
+                CAST(0 AS DECIMAL(18, 3)) AS PendingStock,
+                ISNULL(MAX(a.AccountName), '') AS Warehouse,
+                ISNULL(MAX(r.RackName), '') AS Rack,
+                ISNULL(CAST(sd.ShelfId AS VARCHAR(20)), '') AS Location,
+                ISNULL(MAX(b.BatchName), ISNULL(CAST(MAX(b.BatchNumber) AS VARCHAR(50)), '')) AS BatchNumber
+            FROM StockDet sd
+            LEFT JOIN Rack r ON r.RackId = sd.RackId
+            LEFT JOIN Batch b ON b.BatchId = sd.BatchId
+            LEFT JOIN Account a ON a.AccountId = sd.AccountId
+            LEFT JOIN (
+                SELECT
+                    sd2.DesignId,
+                    sd2.RackId,
+                    sd2.ShelfId,
+                    sd2.BatchId,
+                    sd2.AccountId,
+                    SUM(ISNULL(ba.AllocatedQty, 0)) AS ReservedQty
+                FROM StockDet sd2
+                INNER JOIN BatchAllocate ba ON ba.BatchId = sd2.BatchId
+                    AND (ba.RackId IS NULL OR ba.RackId = sd2.RackId)
+                    AND (ba.ShelfId IS NULL OR ba.ShelfId = sd2.ShelfId)
+                WHERE sd2.DesignId = @DesignId
+                  AND sd2.BatchId IS NOT NULL
+                GROUP BY sd2.DesignId, sd2.RackId, sd2.ShelfId, sd2.BatchId, sd2.AccountId
+            ) reserved ON reserved.DesignId = sd.DesignId
+                AND ISNULL(reserved.RackId, -1) = ISNULL(sd.RackId, -1)
+                AND ISNULL(reserved.ShelfId, -1) = ISNULL(sd.ShelfId, -1)
+                AND ISNULL(reserved.BatchId, -1) = ISNULL(sd.BatchId, -1)
+                AND ISNULL(reserved.AccountId, -1) = ISNULL(sd.AccountId, -1)
+            WHERE sd.DesignId = @DesignId
+            GROUP BY
+                sd.AccountId,
+                sd.RackId,
+                sd.ShelfId,
+                sd.BatchId
+            HAVING SUM(ISNULL(sd.RecQty, 0) - ISNULL(sd.IssQty, 0)) <> 0
+                OR ISNULL(MAX(reserved.ReservedQty), 0) <> 0
+            ORDER BY SUM(ISNULL(sd.RecQty, 0) - ISNULL(sd.IssQty, 0)) DESC;
+            """;
+
+        var rows = await connection.QueryAsync<DesignInventoryRow>(
+            new CommandDefinition(sql, new { DesignId = designId }, cancellationToken: cancellationToken));
+
+        return [.. rows.Select(r => new DesignInventoryDto
+        {
+            CurrentStock = r.CurrentStock,
+            ReservedStock = r.ReservedStock,
+            AvailableStock = r.AvailableStock,
+            PendingStock = r.PendingStock,
+            Warehouse = r.Warehouse?.Trim() ?? string.Empty,
+            Rack = r.Rack?.Trim() ?? string.Empty,
+            Location = r.Location?.Trim() ?? string.Empty,
+            BatchNumber = r.BatchNumber?.Trim() ?? string.Empty
+        })];
+    }
+
+    private static async Task<IReadOnlyList<DesignActivityTimelineDto>> QueryActivityTimelineAsync(
+        IDbConnection connection,
+        int designId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT TOP 50
+                Type,
+                Title,
+                Description,
+                Date,
+                Icon,
+                Color
+            FROM (
+                SELECT
+                    'production' AS Type,
+                    'Production Slip' AS Title,
+                    CONCAT(
+                        'Slip #', pm.ProdSlipNumber,
+                        ' · Qty ', CAST(SUM(pt.Quantity) AS VARCHAR(40)),
+                        ' · Rej ', CAST(SUM(ISNULL(pt.RejQty, 0)) AS VARCHAR(40)),
+                        CASE WHEN MAX(pr.ProcessName) IS NULL THEN '' ELSE CONCAT(' · ', MAX(pr.ProcessName)) END
+                    ) AS Description,
+                    CAST(pm.ProdSlipDate AS DATETIME) AS Date,
+                    'pi pi-cog' AS Icon,
+                    '#2563eb' AS Color
+                FROM ProdSlip_trn pt
+                INNER JOIN ProdSlip_mas pm ON pm.ProdSlipId = pt.ProdSlipId
+                LEFT JOIN Process pr ON pr.ProcessId = COALESCE(pt.ProcessId, pm.ProcessId)
+                WHERE pt.DesignId = @DesignId
+                GROUP BY pm.ProdSlipId, pm.ProdSlipNumber, pm.ProdSlipDate
+
+                UNION ALL
+
+                SELECT
+                    CASE
+                        WHEN ISNULL(sl.RecQty, 0) > 0 AND ISNULL(sl.IssQty, 0) = 0 THEN 'receipt'
+                        WHEN ISNULL(sl.IssQty, 0) > 0 AND ISNULL(sl.RecQty, 0) = 0 THEN 'issue'
+                        ELSE 'stock'
+                    END AS Type,
+                    CASE
+                        WHEN ISNULL(sl.RecQty, 0) > 0 AND ISNULL(sl.IssQty, 0) = 0 THEN 'Stock Receipt'
+                        WHEN ISNULL(sl.IssQty, 0) > 0 AND ISNULL(sl.RecQty, 0) = 0 THEN 'Stock Issue'
+                        ELSE 'Stock Movement'
+                    END AS Title,
+                    CONCAT(
+                        ISNULL(NULLIF(LTRIM(RTRIM(sl.Details)), ''), 'Stock movement'),
+                        ' · Rec ', CAST(ISNULL(sl.RecQty, 0) AS VARCHAR(40)),
+                        ' · Iss ', CAST(ISNULL(sl.IssQty, 0) AS VARCHAR(40))
+                    ) AS Description,
+                    CAST(ISNULL(sl.Saved_Time, sl.DocDate) AS DATETIME) AS Date,
+                    CASE
+                        WHEN ISNULL(sl.RecQty, 0) > 0 AND ISNULL(sl.IssQty, 0) = 0 THEN 'pi pi-download'
+                        WHEN ISNULL(sl.IssQty, 0) > 0 AND ISNULL(sl.RecQty, 0) = 0 THEN 'pi pi-upload'
+                        ELSE 'pi pi-box'
+                    END AS Icon,
+                    CASE
+                        WHEN ISNULL(sl.RecQty, 0) > 0 AND ISNULL(sl.IssQty, 0) = 0 THEN '#16a34a'
+                        WHEN ISNULL(sl.IssQty, 0) > 0 AND ISNULL(sl.RecQty, 0) = 0 THEN '#d97706'
+                        ELSE '#64748b'
+                    END AS Color
+                FROM StockDet_Log sl
+                WHERE sl.DesignId = @DesignId
+            ) activity
+            WHERE Date IS NOT NULL
+            ORDER BY Date DESC;
+            """;
+
+        var rows = await connection.QueryAsync<DesignActivityRow>(
+            new CommandDefinition(sql, new { DesignId = designId }, cancellationToken: cancellationToken));
+
+        return [.. rows.Select(r => new DesignActivityTimelineDto
+        {
+            Type = r.Type?.Trim() ?? string.Empty,
+            Title = r.Title?.Trim() ?? string.Empty,
+            Description = r.Description?.Trim() ?? string.Empty,
+            Date = r.Date,
+            Icon = r.Icon?.Trim() ?? "pi pi-circle",
+            Color = r.Color?.Trim() ?? "#64748b"
+        })];
     }
 
     private static Task<AccountRow?> QueryAccountDetailsAsync(

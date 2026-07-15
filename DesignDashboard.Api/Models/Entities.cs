@@ -52,6 +52,38 @@ public class DesignSalesMetaRow
     public DateTime? LastSoldDate { get; set; }
 }
 
+public class DesignProductionRow
+{
+    public decimal ProductionQuantity { get; set; }
+    public decimal CompletedQuantity { get; set; }
+    public decimal PendingQuantity { get; set; }
+    public decimal RejectedQuantity { get; set; }
+    public string? Machine { get; set; }
+    public string? Department { get; set; }
+    public string? Supervisor { get; set; }
+}
+
+public class DesignInventoryRow
+{
+    public decimal CurrentStock { get; set; }
+    public decimal ReservedStock { get; set; }
+    public decimal AvailableStock { get; set; }
+    public decimal PendingStock { get; set; }
+    public string? Warehouse { get; set; }
+    public string? Rack { get; set; }
+    public string? Location { get; set; }
+    public string? BatchNumber { get; set; }
+}
+
+public class DesignActivityRow
+{
+    public string? Type { get; set; }
+    public string? Title { get; set; }
+    public string? Description { get; set; }
+    public DateTime? Date { get; set; }
+    public string? Icon { get; set; }
+    public string? Color { get; set; }
+}
 
 public class ProductRow
 {

@@ -60,4 +60,40 @@ public class DesignDetailDto
     public IReadOnlyList<DesignOrderDto> Orders { get; set; } = Array.Empty<DesignOrderDto>();
     public IReadOnlyList<DesignSalesPointDto> MonthlySales { get; set; } = Array.Empty<DesignSalesPointDto>();
     public IReadOnlyList<DesignSalesPointDto> YearlySales { get; set; } = Array.Empty<DesignSalesPointDto>();
+    public IReadOnlyList<DesignProductionDto> Production { get; set; } = Array.Empty<DesignProductionDto>();
+    public IReadOnlyList<DesignInventoryDto> Inventory { get; set; } = Array.Empty<DesignInventoryDto>();
+    public IReadOnlyList<DesignActivityTimelineDto> ActivityTimeline { get; set; } = Array.Empty<DesignActivityTimelineDto>();
+}
+
+public class DesignProductionDto
+{
+    public decimal ProductionQuantity { get; set; }
+    public decimal CompletedQuantity { get; set; }
+    public decimal PendingQuantity { get; set; }
+    public decimal RejectedQuantity { get; set; }
+    public string Machine { get; set; } = string.Empty;
+    public string Department { get; set; } = string.Empty;
+    public string Supervisor { get; set; } = string.Empty;
+}
+
+public class DesignInventoryDto
+{
+    public decimal CurrentStock { get; set; }
+    public decimal ReservedStock { get; set; }
+    public decimal AvailableStock { get; set; }
+    public decimal PendingStock { get; set; }
+    public string Warehouse { get; set; } = string.Empty;
+    public string Rack { get; set; } = string.Empty;
+    public string Location { get; set; } = string.Empty;
+    public string BatchNumber { get; set; } = string.Empty;
+}
+
+public class DesignActivityTimelineDto
+{
+    public string Type { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public DateTime? Date { get; set; }
+    public string Icon { get; set; } = string.Empty;
+    public string Color { get; set; } = string.Empty;
 }

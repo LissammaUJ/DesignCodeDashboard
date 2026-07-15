@@ -7,7 +7,13 @@ export const apiInterceptor: HttpInterceptorFn = (req, next) => {
 
   let headers = req.headers.set('Accept', 'application/json');
 
-  if (token && req.url.startsWith(environment.apiUrl)) {
+  // Relative (/api/...) or absolute URLs that target the API base.
+  const isApiRequest =
+    req.url.startsWith(environment.apiUrl) ||
+    req.url.includes(`${environment.apiUrl}/`) ||
+    req.url.startsWith('/api');
+
+  if (token && isApiRequest) {
     headers = headers.set('Authorization', `Bearer ${token}`);
   }
 
