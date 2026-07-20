@@ -58,6 +58,7 @@ public class DesignProductionRow
     public decimal CompletedQuantity { get; set; }
     public decimal PendingQuantity { get; set; }
     public decimal RejectedQuantity { get; set; }
+    public DateTime? ProductionDate { get; set; }
     public string? Machine { get; set; }
     public string? Department { get; set; }
     public string? Supervisor { get; set; }

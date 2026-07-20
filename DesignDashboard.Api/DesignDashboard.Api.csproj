@@ -27,9 +27,7 @@
     succeed without restarting Visual Studio.
   -->
   <Target Name="StopRunningApiBeforeBuild" BeforeTargets="BeforeBuild">
-    <Exec Command="taskkill /F /IM DesignDashboard.Api.exe /T &gt;NUL 2&gt;NUL"
-          IgnoreExitCode="true"
-          Condition="'$(OS)' == 'Windows_NT'" />
+    <Exec Command="taskkill /F /IM DesignDashboard.Api.exe /T &gt;NUL 2&gt;NUL" IgnoreExitCode="true" Condition="'$(OS)' == 'Windows_NT'" />
   </Target>
 
 </Project>

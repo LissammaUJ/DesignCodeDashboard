@@ -1,0 +1,243 @@
+<div class="detail-dialog">
+  <p-toast position="top-right" />
+
+  <header class="detail-dialog__header">
+    <div class="detail-dialog__header-left">
+      <i class="pi pi-palette"></i>
+      <div>
+        <h2>Design Details</h2>
+        @if (detail()) {
+          <span>{{ detail()!.designCode }} — {{ detail()!.designName }}</span>
+        }
+      </div>
+    </div>
+    <div class="detail-dialog__header-actions">
+      <p-button icon="pi pi-search-plus" [text]="true" [rounded]="true" pTooltip="Zoom Image" (onClick)="toggleZoom()" />
+      <p-button icon="pi pi-download" [text]="true" [rounded]="true" pTooltip="Download Image" (onClick)="smartAction('Download Image')" />
+      <p-button icon="pi pi-print" [text]="true" [rounded]="true" pTooltip="Print" (onClick)="smartAction('Print')" />
+      <p-button icon="pi pi-file-pdf" [text]="true" [rounded]="true" pTooltip="Export PDF" (onClick)="smartAction('Export PDF')" />
+      <p-button icon="pi pi-copy" [text]="true" [rounded]="true" pTooltip="Copy Design Code" (onClick)="smartAction('Copy')" />
+      <p-button icon="pi pi-qrcode" [text]="true" [rounded]="true" pTooltip="Generate QR Code" (onClick)="smartAction('QR Code')" />
+      <p-button icon="pi pi-barcode" [text]="true" [rounded]="true" pTooltip="Generate Barcode" (onClick)="smartAction('Barcode')" />
+      <p-button icon="pi pi-times" [text]="true" [rounded]="true" severity="secondary" pTooltip="Close" (onClick)="close()" />
+    </div>
+  </header>
+
+  @if (loading()) {
+    <div class="detail-dialog__loading">
+      <p-skeleton width="100%" height="220px" borderRadius="12px" />
+      <p-skeleton width="100%" height="400px" borderRadius="12px" />
+    </div>
+  } @else if (loadError()) {
+    <div class="detail-dialog__empty" style="padding: 2rem; text-align: center;">
+      <i class="pi pi-exclamation-triangle" style="font-size: 2rem;"></i>
+      <h3>Unable to load design</h3>
+      <p>{{ loadError() }}</p>
+      <p-button label="Close" icon="pi pi-times" severity="secondary" (onClick)="close()" />
+    </div>
+  } @else {
+    @if (detail(); as d) {
+      <div class="detail-dialog__body">
+        <section class="detail-dialog__gallery">
+          <div class="detail-dialog__main-image" [class.detail-dialog__main-image--zoomed]="zoomed()">
+            @if (currentImage()) {
+              <img [src]="currentImage()" [alt]="d.designName" (click)="toggleZoom()" />
+            } @else {
+              <div class="detail-dialog__no-image"><i class="pi pi-image"></i><span>No Image Available</span></div>
+            }
+          </div>
+          @if (d.images.length > 1) {
+            <div class="detail-dialog__carousel">
+              <p-button icon="pi pi-chevron-left" [rounded]="true" [outlined]="true" size="small" (onClick)="prevImage()" />
+              @for (img of d.images; track img; let i = $index) {
+                <img [src]="img" [class.detail-dialog__thumb--active]="i === activeImageIndex()" (click)="activeImageIndex.set(i)" />
+              }
+              <p-button icon="pi pi-chevron-right" [rounded]="true" [outlined]="true" size="small" (onClick)="nextImage()" />
+            </div>
+          }
+        </section>
+
+        <p-tabs value="0" class="detail-dialog__tabs">
+          <p-tablist>
+            <p-tab value="0">General Information</p-tab>
+            <p-tab value="1">Sales Summary</p-tab>
+            <p-tab value="2">Order Details</p-tab>
+            <p-tab value="3">Production</p-tab>
+            <p-tab value="4">Inventory</p-tab>
+            <p-tab value="5">Activity Timeline</p-tab>
+          </p-tablist>
+
+          <p-tabpanels>
+            <p-tabpanel value="0">
+              <div class="detail-dialog__info-grid">
+                <div class="detail-dialog__info"><label>Design Code</label><span>{{ d.general.designCode }}</span></div>
+                <div class="detail-dialog__info"><label>Design Name</label><span>{{ d.general.designName }}</span></div>
+                <div class="detail-dialog__info"><label>Design ID</label><span>{{ d.general.designID }}</span></div>
+                <div class="detail-dialog__info"><label>Customer Name</label><span>{{ d.general.customer }}</span></div>
+                <div class="detail-dialog__info"><label>Category</label><span>{{ d.general.category }}</span></div>
+                <div class="detail-dialog__info"><label>Sub Category</label><span>{{ d.general.subCategory }}</span></div>
+                <div class="detail-dialog__info"><label>Material</label><span>{{ d.general.material }}</span></div>
+                <div class="detail-dialog__info"><label>Purity</label><span>{{ d.general.purity }}</span></div>
+                <div class="detail-dialog__info">
+                  <label>Gross Weight</label>
+                  <span>{{ hasGrossWeight() ? d.general.grossWeight + ' g' : 'No Data Available' }}</span>
+                </div>
+                <div class="detail-dialog__info">
+                  <label>Net Weight</label>
+                  <span>{{ hasNetWeight() ? d.general.netWeight + ' g' : 'No Data Available' }}</span>
+                </div>
+                <div class="detail-dialog__info"><label>Designer</label><span>{{ d.general.designer }}</span></div>
+                <div class="detail-dialog__info"><label>Barcode</label><span>{{ d.general.barcode }}</span></div>
+                <div class="detail-dialog__info"><label>Status</label><span>{{ d.general.status }}</span></div>
+                <div class="detail-dialog__info"><label>Account / Contact</label><span>{{ d.general.modifiedDate }}</span></div>
+              </div>
+            </p-tabpanel>
+
+            <p-tabpanel value="1">
+              <div class="detail-dialog__summary-row">
+                <div class="detail-dialog__mini-kpi"><span>Total Sales Qty</span><strong>{{ d.sales.totalSalesQuantity }}</strong></div>
+                <div class="detail-dialog__mini-kpi"><span>Total Sales Value</span><strong>{{ d.sales.totalSalesValue | currency:'INR' }}</strong></div>
+                <div class="detail-dialog__mini-kpi"><span>Avg Sales Price</span><strong>{{ d.sales.averageSellingPrice | currency:'INR' }}</strong></div>
+                <div class="detail-dialog__mini-kpi"><span>Last Sales Date</span><strong>{{ d.sales.lastSoldDate }}</strong></div>
+                <div class="detail-dialog__mini-kpi"><span>Top Customer</span><strong>{{ d.sales.bestCustomer }}</strong></div>
+                <div class="detail-dialog__mini-kpi"><span>Top Branch</span><strong>{{ d.sales.topSellingBranch }}</strong></div>
+              </div>
+              <div class="detail-dialog__charts-row">
+                <div class="detail-dialog__chart-box">
+                  <h5>Monthly Sales</h5>
+                  @if (hasMonthlySales()) {
+                    <p-chart type="bar" [data]="monthlyChart()!" [options]="barOpts" />
+                  } @else {
+                    <p>No Data Available</p>
+                  }
+                </div>
+                <div class="detail-dialog__chart-box">
+                  <h5>Yearly Sales</h5>
+                  @if (hasYearlySales()) {
+                    <p-chart type="bar" [data]="yearlyChart()!" [options]="barOpts" />
+                  } @else {
+                    <p>No Data Available</p>
+                  }
+                </div>
+              </div>
+            </p-tabpanel>
+
+            <p-tabpanel value="2">
+              @if (hasOrders()) {
+                <div class="detail-dialog__table-toolbar">
+                  <p-iconfield>
+                    <p-inputicon styleClass="pi pi-search" />
+                    <input pInputText type="text" placeholder="Search orders..." (input)="onOrderSearch($any($event.target).value)" />
+                  </p-iconfield>
+                  <p-button label="Export Excel" icon="pi pi-file-excel" size="small" severity="success" [outlined]="true" (onClick)="exportOrdersExcel()" />
+                </div>
+                <p-table
+                  #orderTable
+                  [value]="d.orders"
+                  [paginator]="true"
+                  [rows]="5"
+                  [rowsPerPageOptions]="[5, 10, 20]"
+                  [showCurrentPageReport]="true"
+                  currentPageReportTemplate="{first}-{last} of {totalRecords}"
+                  [globalFilterFields]="['orderNo','customer','status','processingStage']"
+                  styleClass="p-datatable-sm p-datatable-striped"
+                  [scrollable]="true"
+                  scrollHeight="320px"
+                  [resizableColumns]="true"
+                  columnResizeMode="expand"
+                >
+                  <ng-template pTemplate="header">
+                    <tr>
+                      <th pSortableColumn="orderNo" pResizableColumn>Order No <p-sortIcon field="orderNo" /></th>
+                      <th pSortableColumn="customer" pResizableColumn>Customer <p-sortIcon field="customer" /></th>
+                      <th pSortableColumn="quantity" pResizableColumn>Quantity <p-sortIcon field="quantity" /></th>
+                      <th pSortableColumn="orderDate" pResizableColumn>Order Date <p-sortIcon field="orderDate" /></th>
+                      <th pResizableColumn>Delivery Date</th>
+                      <th pSortableColumn="pendingQuantity" pResizableColumn>Pending Quantity <p-sortIcon field="pendingQuantity" /></th>
+                      <th pSortableColumn="status" pResizableColumn>Order Status <p-sortIcon field="status" /></th>
+                      <th pResizableColumn>Processing Stage</th>
+                      <th pSortableColumn="amount" pResizableColumn>Order Value <p-sortIcon field="amount" /></th>
+                    </tr>
+                  </ng-template>
+                  <ng-template pTemplate="body" let-order>
+                    <tr>
+                      <td><strong>{{ order.orderNo }}</strong></td>
+                      <td>{{ order.customer }}</td>
+                      <td>{{ order.quantity }}</td>
+                      <td>{{ order.orderDate }}</td>
+                      <td>{{ order.deliveryDate }}</td>
+                      <td>{{ order.pendingQuantity }}</td>
+                      <td><p-tag [value]="order.status" /></td>
+                      <td>{{ order.processingStage }}</td>
+                      <td>{{ order.amount | currency:'INR' }}</td>
+                    </tr>
+                  </ng-template>
+                </p-table>
+              } @else {
+                <p>No Data Available</p>
+              }
+            </p-tabpanel>
+
+            <p-tabpanel value="3">
+              @if (hasProductionData()) {
+                <div class="detail-dialog__info-grid">
+                  <div class="detail-dialog__info"><label>Production Quantity</label><span>{{ d.production.productionQuantity }}</span></div>
+                  <div class="detail-dialog__info"><label>Completed Quantity</label><span>{{ d.production.completedQuantity }}</span></div>
+                  <div class="detail-dialog__info"><label>Pending Quantity</label><span>{{ d.production.pendingQuantity }}</span></div>
+                  <div class="detail-dialog__info"><label>Rejected Quantity</label><span>{{ d.production.rejectedQuantity }}</span></div>
+                  <div class="detail-dialog__info"><label>Machine</label><span>{{ d.production.machine }}</span></div>
+                  <div class="detail-dialog__info"><label>Department</label><span>{{ d.production.department }}</span></div>
+                  <div class="detail-dialog__info"><label>Supervisor</label><span>{{ d.production.supervisor }}</span></div>
+                </div>
+              } @else {
+                <p>No Data Available</p>
+              }
+            </p-tabpanel>
+
+            <p-tabpanel value="4">
+              @if (hasInventoryData()) {
+                <div class="detail-dialog__info-grid">
+                  <div class="detail-dialog__info"><label>Current Stock</label><span>{{ d.inventory.currentStock }}</span></div>
+                  <div class="detail-dialog__info"><label>Reserved Stock</label><span>{{ d.inventory.reservedStock }}</span></div>
+                  <div class="detail-dialog__info"><label>Available Stock</label><span>{{ d.inventory.availableStock }}</span></div>
+                  <div class="detail-dialog__info"><label>Pending Stock</label><span>{{ d.inventory.pendingStock }}</span></div>
+                  <div class="detail-dialog__info"><label>Warehouse</label><span>{{ d.inventory.warehouse }}</span></div>
+                  <div class="detail-dialog__info"><label>Rack</label><span>{{ d.inventory.rack }}</span></div>
+                  <div class="detail-dialog__info"><label>Location</label><span>{{ d.inventory.location }}</span></div>
+                  <div class="detail-dialog__info"><label>Batch Number</label><span>{{ d.inventory.batchNumber }}</span></div>
+                </div>
+              } @else {
+                <p>No Data Available</p>
+              }
+            </p-tabpanel>
+
+            <p-tabpanel value="5">
+              @if (hasTimelineData()) {
+                <p-timeline [value]="d.timeline" align="left">
+                  <ng-template pTemplate="content" let-event>
+                    <div class="detail-dialog__timeline-item">
+                      <strong>{{ event.title }}</strong>
+                      <p>{{ event.description }}</p>
+                      <small>{{ event.date }}</small>
+                    </div>
+                  </ng-template>
+                  <ng-template pTemplate="marker" let-event>
+                    <span class="detail-dialog__timeline-marker" [style.background]="event.color">
+                      <i [class]="event.icon"></i>
+                    </span>
+                  </ng-template>
+                </p-timeline>
+              } @else {
+                <p>No Data Available</p>
+              }
+            </p-tabpanel>
+          </p-tabpanels>
+        </p-tabs>
+      </div>
+
+      <footer class="detail-dialog__footer">
+        <p-button label="Close" icon="pi pi-times" severity="secondary" (onClick)="close()" />
+      </footer>
+    }
+  }
+</div>

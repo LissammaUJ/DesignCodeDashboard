@@ -125,9 +125,36 @@ public sealed class DesignRepository(
             var monthly = await QueryMonthlySalesAsync(connection, filterParams, cancellationToken);
             var yearly = await QueryYearlySalesAsync(connection, filterParams, cancellationToken);
             var lastSold = await QueryLastSoldDateAsync(connection, filterParams, cancellationToken);
-            var production = await QueryProductionAsync(connection, designId, cancellationToken);
-            var inventory = await QueryInventoryAsync(connection, designId, cancellationToken);
-            var activityTimeline = await QueryActivityTimelineAsync(connection, designId, cancellationToken);
+
+            IReadOnlyList<DesignProductionDto> production = [];
+            IReadOnlyList<DesignInventoryDto> inventory = [];
+            IReadOnlyList<DesignActivityTimelineDto> activityTimeline = [];
+            try
+            {
+                production = await QueryProductionAsync(connection, designId, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)
+            {
+                logger.LogWarning(ex, "Embedded production query failed for DesignId={DesignId}", designId);
+            }
+
+            try
+            {
+                inventory = await QueryInventoryAsync(connection, designId, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)
+            {
+                logger.LogWarning(ex, "Embedded inventory query failed for DesignId={DesignId}", designId);
+            }
+
+            try
+            {
+                activityTimeline = await QueryActivityTimelineAsync(connection, designId, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)
+            {
+                logger.LogWarning(ex, "Embedded activity timeline query failed for DesignId={DesignId}", designId);
+            }
 
             var accountId = filter?.CustomerAccountId > 0
                 ? filter.CustomerAccountId
@@ -412,7 +439,126 @@ public sealed class DesignRepository(
             new CommandDefinition(sql, filterParams, cancellationToken: cancellationToken));
     }
 
+    public async Task<DesignProductionDto> GetProductionByDesignIdAsync(
+        int designId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            if (connection.State != ConnectionState.Open)
+            {
+                connection.Open();
+            }
+
+            var fromProdSlip = await QueryProductionSummaryAsync(connection, designId, cancellationToken);
+            if (fromProdSlip.ProductionQuantity != 0
+                || fromProdSlip.CompletedQuantity != 0
+                || fromProdSlip.PendingQuantity != 0
+                || fromProdSlip.RejectedQuantity != 0
+                || fromProdSlip.ProductionDate.HasValue)
+            {
+                return fromProdSlip;
+            }
+
+            // Fallback: ItemDesign → Product → Bo_trn → Bo_mas (booking quantities / dates).
+            return await QueryProductionFromBoAsync(connection, designId, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)
+        {
+            logger.LogWarning(ex, "Production query failed for DesignId={DesignId}; returning empty defaults", designId);
+            return DesignProductionDto.Empty;
+        }
+    }
+
+    public async Task<DesignInventoryDto> GetInventoryByDesignIdAsync(
+        int designId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            if (connection.State != ConnectionState.Open)
+            {
+                connection.Open();
+            }
+
+            var rows = await QueryInventoryAsync(connection, designId, cancellationToken);
+            if (rows.Count == 0)
+            {
+                return DesignInventoryDto.Empty;
+            }
+
+            // Single summary for the tab UI: totals + location of the largest stock row.
+            var primary = rows[0];
+            return new DesignInventoryDto
+            {
+                CurrentStock = rows.Sum(r => r.CurrentStock),
+                ReservedStock = rows.Sum(r => r.ReservedStock),
+                AvailableStock = rows.Sum(r => r.AvailableStock),
+                PendingStock = rows.Sum(r => r.PendingStock),
+                Warehouse = primary.Warehouse,
+                Rack = primary.Rack,
+                Location = primary.Location,
+                BatchNumber = primary.BatchNumber
+            };
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)
+        {
+            logger.LogWarning(ex, "Inventory query failed for DesignId={DesignId}; returning empty defaults", designId);
+            return DesignInventoryDto.Empty;
+        }
+    }
+
+    public async Task<IReadOnlyList<DesignActivityItemDto>> GetActivityTimelineByDesignIdAsync(
+        int designId,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var connection = connectionFactory.CreateConnection();
+            if (connection.State != ConnectionState.Open)
+            {
+                connection.Open();
+            }
+
+            var rows = await QueryActivityTimelineAsync(connection, designId, cancellationToken);
+            return [.. rows.Select(r => new DesignActivityItemDto
+            {
+                Title = r.Title,
+                Description = r.Description,
+                // ISO-like local timestamp for the existing timeline UI
+                ActivityDate = r.Date?.ToString("yyyy-MM-dd'T'HH:mm:ss") ?? string.Empty,
+                Icon = string.IsNullOrWhiteSpace(r.Icon) ? "pi pi-circle" : r.Icon,
+                Color = string.IsNullOrWhiteSpace(r.Color) ? "#64748b" : r.Color
+            })];
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)
+        {
+            logger.LogWarning(ex, "Activity timeline query failed for DesignId={DesignId}; returning empty list", designId);
+            return [];
+        }
+    }
+
     private static async Task<IReadOnlyList<DesignProductionDto>> QueryProductionAsync(
+        IDbConnection connection,
+        int designId,
+        CancellationToken cancellationToken)
+    {
+        var summary = await QueryProductionSummaryAsync(connection, designId, cancellationToken);
+        if (summary.ProductionQuantity == 0
+            && summary.CompletedQuantity == 0
+            && summary.PendingQuantity == 0
+            && summary.RejectedQuantity == 0
+            && summary.ProductionDate is null)
+        {
+            return [];
+        }
+
+        return [summary];
+    }
+
+    private static async Task<DesignProductionDto> QueryProductionSummaryAsync(
         IDbConnection connection,
         int designId,
         CancellationToken cancellationToken)
@@ -423,6 +569,7 @@ public sealed class DesignRepository(
                 SUM(CASE WHEN ISNULL(pm.Closed, 0) = 1 THEN pt.Quantity ELSE 0 END) AS CompletedQuantity,
                 SUM(CASE WHEN ISNULL(pm.Closed, 0) = 0 THEN pt.Quantity ELSE 0 END) AS PendingQuantity,
                 SUM(ISNULL(pt.RejQty, 0)) AS RejectedQuantity,
+                MAX(pm.ProdSlipDate) AS ProductionDate,
                 ISNULL(MAX(m.MachineName), '') AS Machine,
                 ISNULL(MAX(pr.ProcessName), '') AS Department,
                 ISNULL(MAX(e.EmplName), '') AS Supervisor
@@ -431,28 +578,78 @@ public sealed class DesignRepository(
             LEFT JOIN Process pr ON pr.ProcessId = COALESCE(pt.ProcessId, pm.ProcessId)
             LEFT JOIN Machine m ON m.MachineId = pt.MachineId
             LEFT JOIN Employee e ON e.EmplId = COALESCE(pm.InspEmplId, pm.Saved_Emp)
-            WHERE pt.DesignId = @DesignId
-            GROUP BY
-                ISNULL(m.MachineName, ''),
-                ISNULL(pr.ProcessName, ''),
-                ISNULL(e.EmplName, '')
-            HAVING SUM(pt.Quantity) <> 0 OR SUM(ISNULL(pt.RejQty, 0)) <> 0
-            ORDER BY SUM(pt.Quantity) DESC;
+            WHERE pt.DesignId = @DesignId;
             """;
 
-        var rows = await connection.QueryAsync<DesignProductionRow>(
+        var row = await connection.QuerySingleOrDefaultAsync<DesignProductionRow>(
             new CommandDefinition(sql, new { DesignId = designId }, cancellationToken: cancellationToken));
 
-        return [.. rows.Select(r => new DesignProductionDto
+        if (row is null)
         {
-            ProductionQuantity = r.ProductionQuantity,
-            CompletedQuantity = r.CompletedQuantity,
-            PendingQuantity = r.PendingQuantity,
-            RejectedQuantity = r.RejectedQuantity,
-            Machine = r.Machine?.Trim() ?? string.Empty,
-            Department = r.Department?.Trim() ?? string.Empty,
-            Supervisor = r.Supervisor?.Trim() ?? string.Empty
-        })];
+            return DesignProductionDto.Empty;
+        }
+
+        return new DesignProductionDto
+        {
+            ProductionQuantity = row.ProductionQuantity,
+            CompletedQuantity = row.CompletedQuantity,
+            PendingQuantity = row.PendingQuantity,
+            RejectedQuantity = row.RejectedQuantity,
+            ProductionDate = row.ProductionDate,
+            Machine = row.Machine?.Trim() ?? string.Empty,
+            Department = row.Department?.Trim() ?? string.Empty,
+            Supervisor = row.Supervisor?.Trim() ?? string.Empty
+        };
+    }
+
+    private static async Task<DesignProductionDto> QueryProductionFromBoAsync(
+        IDbConnection connection,
+        int designId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT
+                SUM(bt.Quantity) AS ProductionQuantity,
+                CAST(0 AS DECIMAL(18, 3)) AS CompletedQuantity,
+                CAST(0 AS DECIMAL(18, 3)) AS PendingQuantity,
+                CAST(0 AS DECIMAL(18, 3)) AS RejectedQuantity,
+                MAX(bm.BoDate) AS ProductionDate,
+                CAST('' AS NVARCHAR(100)) AS Machine,
+                CAST('' AS NVARCHAR(100)) AS Department,
+                CAST('' AS NVARCHAR(100)) AS Supervisor
+            FROM ItemDesign d
+            INNER JOIN Product p ON d.DesignId = p.DesignId
+            INNER JOIN Bo_trn bt ON p.ProductId = bt.ProductId
+            INNER JOIN Bo_mas bm ON bt.BoId = bm.BoId
+            WHERE d.DesignId = @DesignId;
+            """;
+
+        try
+        {
+            var row = await connection.QuerySingleOrDefaultAsync<DesignProductionRow>(
+                new CommandDefinition(sql, new { DesignId = designId }, cancellationToken: cancellationToken));
+
+            if (row is null || row.ProductionQuantity == 0 && row.ProductionDate is null)
+            {
+                return DesignProductionDto.Empty;
+            }
+
+            return new DesignProductionDto
+            {
+                ProductionQuantity = row.ProductionQuantity,
+                CompletedQuantity = 0,
+                PendingQuantity = 0,
+                RejectedQuantity = 0,
+                ProductionDate = row.ProductionDate,
+                Machine = string.Empty,
+                Department = string.Empty,
+                Supervisor = string.Empty
+            };
+        }
+        catch
+        {
+            return DesignProductionDto.Empty;
+        }
     }
 
     private static async Task<IReadOnlyList<DesignInventoryDto>> QueryInventoryAsync(
@@ -522,86 +719,163 @@ public sealed class DesignRepository(
         })];
     }
 
+    /// <summary>
+    /// Builds timeline events from existing SQL tables only.
+    /// Icons/colors match the original demo timeline markers.
+    /// Each source is isolated so a missing table never fails the whole response.
+    /// </summary>
     private static async Task<IReadOnlyList<DesignActivityTimelineDto>> QueryActivityTimelineAsync(
         IDbConnection connection,
         int designId,
         CancellationToken cancellationToken)
     {
-        const string sql = """
-            SELECT TOP 50
-                Type,
-                Title,
-                Description,
-                Date,
-                Icon,
-                Color
-            FROM (
-                SELECT
-                    'production' AS Type,
-                    'Production Slip' AS Title,
-                    CONCAT(
-                        'Slip #', pm.ProdSlipNumber,
-                        ' · Qty ', CAST(SUM(pt.Quantity) AS VARCHAR(40)),
-                        ' · Rej ', CAST(SUM(ISNULL(pt.RejQty, 0)) AS VARCHAR(40)),
-                        CASE WHEN MAX(pr.ProcessName) IS NULL THEN '' ELSE CONCAT(' · ', MAX(pr.ProcessName)) END
-                    ) AS Description,
-                    CAST(pm.ProdSlipDate AS DATETIME) AS Date,
-                    'pi pi-cog' AS Icon,
-                    '#2563eb' AS Color
-                FROM ProdSlip_trn pt
-                INNER JOIN ProdSlip_mas pm ON pm.ProdSlipId = pt.ProdSlipId
-                LEFT JOIN Process pr ON pr.ProcessId = COALESCE(pt.ProcessId, pm.ProcessId)
-                WHERE pt.DesignId = @DesignId
-                GROUP BY pm.ProdSlipId, pm.ProdSlipNumber, pm.ProdSlipDate
+        var events = new List<DesignActivityTimelineDto>();
 
-                UNION ALL
+        await TryAddActivityRowsAsync(connection, designId, cancellationToken, events, """
+            SELECT TOP 1
+                'created' AS Type,
+                'Created' AS Title,
+                CONCAT('Design ', ISNULL(NULLIF(LTRIM(RTRIM(d.DesignCode)), ''), CAST(d.DesignId AS VARCHAR(20))), ' created') AS Description,
+                CAST(COALESCE(d.Saved_Time, d.DesignDate, d.CreatedDate) AS DATETIME) AS Date,
+                'pi pi-plus-circle' AS Icon,
+                '#2563eb' AS Color
+            FROM ItemDesign d
+            WHERE d.DesignId = @DesignId
+              AND COALESCE(d.Saved_Time, d.DesignDate, d.CreatedDate) IS NOT NULL;
+            """);
 
-                SELECT
-                    CASE
-                        WHEN ISNULL(sl.RecQty, 0) > 0 AND ISNULL(sl.IssQty, 0) = 0 THEN 'receipt'
-                        WHEN ISNULL(sl.IssQty, 0) > 0 AND ISNULL(sl.RecQty, 0) = 0 THEN 'issue'
-                        ELSE 'stock'
-                    END AS Type,
-                    CASE
-                        WHEN ISNULL(sl.RecQty, 0) > 0 AND ISNULL(sl.IssQty, 0) = 0 THEN 'Stock Receipt'
-                        WHEN ISNULL(sl.IssQty, 0) > 0 AND ISNULL(sl.RecQty, 0) = 0 THEN 'Stock Issue'
-                        ELSE 'Stock Movement'
-                    END AS Title,
-                    CONCAT(
-                        ISNULL(NULLIF(LTRIM(RTRIM(sl.Details)), ''), 'Stock movement'),
-                        ' · Rec ', CAST(ISNULL(sl.RecQty, 0) AS VARCHAR(40)),
-                        ' · Iss ', CAST(ISNULL(sl.IssQty, 0) AS VARCHAR(40))
-                    ) AS Description,
-                    CAST(ISNULL(sl.Saved_Time, sl.DocDate) AS DATETIME) AS Date,
-                    CASE
-                        WHEN ISNULL(sl.RecQty, 0) > 0 AND ISNULL(sl.IssQty, 0) = 0 THEN 'pi pi-download'
-                        WHEN ISNULL(sl.IssQty, 0) > 0 AND ISNULL(sl.RecQty, 0) = 0 THEN 'pi pi-upload'
-                        ELSE 'pi pi-box'
-                    END AS Icon,
-                    CASE
-                        WHEN ISNULL(sl.RecQty, 0) > 0 AND ISNULL(sl.IssQty, 0) = 0 THEN '#16a34a'
-                        WHEN ISNULL(sl.IssQty, 0) > 0 AND ISNULL(sl.RecQty, 0) = 0 THEN '#d97706'
-                        ELSE '#64748b'
-                    END AS Color
-                FROM StockDet_Log sl
-                WHERE sl.DesignId = @DesignId
-            ) activity
-            WHERE Date IS NOT NULL
-            ORDER BY Date DESC;
-            """;
+        await TryAddActivityRowsAsync(connection, designId, cancellationToken, events, """
+            SELECT TOP 20
+                CASE WHEN ISNULL(pm.Closed, 0) = 1 THEN 'production-completed' ELSE 'production-started' END AS Type,
+                CASE WHEN ISNULL(pm.Closed, 0) = 1 THEN 'Production Completed' ELSE 'Production Started' END AS Title,
+                CONCAT(
+                    'Slip #', pm.ProdSlipNumber,
+                    ' · Qty ', CAST(SUM(pt.Quantity) AS VARCHAR(40)),
+                    CASE WHEN MAX(pr.ProcessName) IS NULL THEN '' ELSE CONCAT(' · ', MAX(pr.ProcessName)) END
+                ) AS Description,
+                CAST(pm.ProdSlipDate AS DATETIME) AS Date,
+                CASE WHEN ISNULL(pm.Closed, 0) = 1 THEN 'pi pi-check-circle' ELSE 'pi pi-play' END AS Icon,
+                CASE WHEN ISNULL(pm.Closed, 0) = 1 THEN '#16a34a' ELSE '#2563eb' END AS Color
+            FROM ProdSlip_trn pt
+            INNER JOIN ProdSlip_mas pm ON pm.ProdSlipId = pt.ProdSlipId
+            LEFT JOIN Process pr ON pr.ProcessId = COALESCE(pt.ProcessId, pm.ProcessId)
+            WHERE pt.DesignId = @DesignId
+            GROUP BY pm.ProdSlipId, pm.ProdSlipNumber, pm.ProdSlipDate, pm.Closed
+            HAVING SUM(pt.Quantity) <> 0 OR SUM(ISNULL(pt.RejQty, 0)) <> 0
+            ORDER BY pm.ProdSlipDate DESC;
+            """);
 
-        var rows = await connection.QueryAsync<DesignActivityRow>(
-            new CommandDefinition(sql, new { DesignId = designId }, cancellationToken: cancellationToken));
+        await TryAddActivityRowsAsync(connection, designId, cancellationToken, events, """
+            SELECT TOP 20
+                CASE
+                    WHEN ISNULL(sl.RecQty, 0) > 0 AND ISNULL(sl.IssQty, 0) = 0 THEN 'downloaded'
+                    WHEN ISNULL(sl.IssQty, 0) > 0 AND ISNULL(sl.RecQty, 0) = 0 THEN 'updated'
+                    ELSE 'updated'
+                END AS Type,
+                CASE
+                    WHEN ISNULL(sl.RecQty, 0) > 0 AND ISNULL(sl.IssQty, 0) = 0 THEN 'Downloaded'
+                    WHEN ISNULL(sl.IssQty, 0) > 0 AND ISNULL(sl.RecQty, 0) = 0 THEN 'Updated'
+                    ELSE 'Updated'
+                END AS Title,
+                CONCAT(
+                    ISNULL(NULLIF(LTRIM(RTRIM(sl.Details)), ''), 'Stock movement'),
+                    ' · Rec ', CAST(ISNULL(sl.RecQty, 0) AS VARCHAR(40)),
+                    ' · Iss ', CAST(ISNULL(sl.IssQty, 0) AS VARCHAR(40))
+                ) AS Description,
+                CAST(ISNULL(sl.Saved_Time, sl.DocDate) AS DATETIME) AS Date,
+                CASE
+                    WHEN ISNULL(sl.RecQty, 0) > 0 AND ISNULL(sl.IssQty, 0) = 0 THEN 'pi pi-download'
+                    WHEN ISNULL(sl.IssQty, 0) > 0 AND ISNULL(sl.RecQty, 0) = 0 THEN 'pi pi-pencil'
+                    ELSE 'pi pi-pencil'
+                END AS Icon,
+                CASE
+                    WHEN ISNULL(sl.RecQty, 0) > 0 AND ISNULL(sl.IssQty, 0) = 0 THEN '#0891b2'
+                    WHEN ISNULL(sl.IssQty, 0) > 0 AND ISNULL(sl.RecQty, 0) = 0 THEN '#7c3aed'
+                    ELSE '#7c3aed'
+                END AS Color
+            FROM StockDet_Log sl
+            WHERE sl.DesignId = @DesignId
+              AND ISNULL(sl.Saved_Time, sl.DocDate) IS NOT NULL
+            ORDER BY ISNULL(sl.Saved_Time, sl.DocDate) DESC;
+            """);
 
-        return [.. rows.Select(r => new DesignActivityTimelineDto
+        // Bo_mas / Bo_trn booking activity (try BoId then BoSl join keys).
+        await TryAddActivityRowsAsync(connection, designId, cancellationToken, events, """
+            SELECT TOP 20
+                'created' AS Type,
+                'Created' AS Title,
+                CONCAT('Booking #', ISNULL(CAST(bm.BoNumber AS VARCHAR(40)), CAST(bm.BoId AS VARCHAR(40))), ' · Qty ', CAST(SUM(bt.Quantity) AS VARCHAR(40))) AS Description,
+                CAST(bm.BoDate AS DATETIME) AS Date,
+                'pi pi-plus-circle' AS Icon,
+                '#2563eb' AS Color
+            FROM ItemDesign d
+            INNER JOIN Product p ON p.DesignId = d.DesignId
+            INNER JOIN Bo_trn bt ON bt.ProductId = p.ProductId
+            INNER JOIN Bo_mas bm ON bm.BoId = bt.BoId
+            WHERE d.DesignId = @DesignId
+              AND bm.BoDate IS NOT NULL
+            GROUP BY bm.BoId, bm.BoNumber, bm.BoDate
+            ORDER BY bm.BoDate DESC;
+            """);
+
+        await TryAddActivityRowsAsync(connection, designId, cancellationToken, events, """
+            SELECT TOP 20
+                'created' AS Type,
+                'Created' AS Title,
+                CONCAT('Booking · Qty ', CAST(SUM(bt.Quantity) AS VARCHAR(40))) AS Description,
+                CAST(bm.BoDate AS DATETIME) AS Date,
+                'pi pi-plus-circle' AS Icon,
+                '#2563eb' AS Color
+            FROM ItemDesign d
+            INNER JOIN Product p ON p.DesignId = d.DesignId
+            INNER JOIN Bo_trn bt ON bt.ProductId = p.ProductId
+            INNER JOIN Bo_mas bm ON bm.BoSl = bt.BoSl
+            WHERE d.DesignId = @DesignId
+              AND bm.BoDate IS NOT NULL
+            GROUP BY bm.BoSl, bm.BoDate
+            ORDER BY bm.BoDate DESC;
+            """);
+
+        return [.. events
+            .Where(e => e.Date.HasValue)
+            .OrderByDescending(e => e.Date)
+            .Take(50)];
+    }
+
+    private static async Task TryAddActivityRowsAsync(
+        IDbConnection connection,
+        int designId,
+        CancellationToken cancellationToken,
+        List<DesignActivityTimelineDto> target,
+        string sql)
+    {
+        try
         {
-            Type = r.Type?.Trim() ?? string.Empty,
-            Title = r.Title?.Trim() ?? string.Empty,
-            Description = r.Description?.Trim() ?? string.Empty,
-            Date = r.Date,
-            Icon = r.Icon?.Trim() ?? "pi pi-circle",
-            Color = r.Color?.Trim() ?? "#64748b"
-        })];
+            var rows = await connection.QueryAsync<DesignActivityRow>(
+                new CommandDefinition(sql, new { DesignId = designId }, cancellationToken: cancellationToken));
+
+            foreach (var r in rows)
+            {
+                if (r.Date is null)
+                {
+                    continue;
+                }
+
+                target.Add(new DesignActivityTimelineDto
+                {
+                    Type = r.Type?.Trim() ?? string.Empty,
+                    Title = r.Title?.Trim() ?? string.Empty,
+                    Description = r.Description?.Trim() ?? string.Empty,
+                    Date = r.Date,
+                    Icon = string.IsNullOrWhiteSpace(r.Icon) ? "pi pi-circle" : r.Icon.Trim(),
+                    Color = string.IsNullOrWhiteSpace(r.Color) ? "#64748b" : r.Color.Trim()
+                });
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)
+        {
+            // Missing table/column for this source — skip and continue with other sources.
+        }
     }
 
     private static Task<AccountRow?> QueryAccountDetailsAsync(

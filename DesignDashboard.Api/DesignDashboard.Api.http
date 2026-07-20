@@ -1,5 +1,5 @@
 ### Design Dashboard API — sample requests
-@baseUrl = http://localhost:5000
+@baseUrl = http://localhost:100
 
 ### 1) Active customers
 GET {{baseUrl}}/api/customer

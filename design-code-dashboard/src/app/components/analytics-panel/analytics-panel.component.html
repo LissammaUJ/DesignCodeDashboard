@@ -1,0 +1,58 @@
+<div class="analytics" role="region" aria-label="Analytics charts">
+  @if (loading()) {
+    @for (i of [1,2,3]; track i) {
+      <div class="analytics__card analytics__card--skeleton">
+        <p-skeleton height="200px" borderRadius="14px" />
+      </div>
+    }
+  } @else if (analytics()) {
+    <div class="analytics__card">
+      <h4><i class="pi pi-chart-line" aria-hidden="true"></i> Sales Trend</h4>
+      <div class="analytics__chart" role="img" aria-label="Sales trend chart">
+        <p-chart type="line" [data]="toLineChart(analytics()!.salesTrend)!" [options]="lineOpts" />
+      </div>
+    </div>
+    <div class="analytics__card">
+      <h4><i class="pi pi-users" aria-hidden="true"></i> Top Customers</h4>
+      <div class="analytics__chart" role="img" aria-label="Top customers chart">
+        <p-chart type="bar" [data]="toChart(analytics()!.topCustomers)!" [options]="barOpts" />
+      </div>
+    </div>
+    <div class="analytics__card">
+      <h4><i class="pi pi-tags" aria-hidden="true"></i> Top Categories</h4>
+      <div class="analytics__chart" role="img" aria-label="Top categories chart">
+        <p-chart type="bar" [data]="toChart(analytics()!.topCategories)!" [options]="barOpts" />
+      </div>
+    </div>
+    <div class="analytics__card">
+      <h4><i class="pi pi-gem" aria-hidden="true"></i> Top Materials</h4>
+      <div class="analytics__chart" role="img" aria-label="Top materials chart">
+        <p-chart type="bar" [data]="toChart(analytics()!.topMaterials)!" [options]="barOpts" />
+      </div>
+    </div>
+    <div class="analytics__card">
+      <h4><i class="pi pi-user" aria-hidden="true"></i> Top Designers</h4>
+      <div class="analytics__chart" role="img" aria-label="Top designers chart">
+        <p-chart type="bar" [data]="toChart(analytics()!.topDesigners)!" [options]="barOpts" />
+      </div>
+    </div>
+    <div class="analytics__card">
+      <h4><i class="pi pi-arrows-h" aria-hidden="true"></i> Stock Movement</h4>
+      <div class="analytics__chart" role="img" aria-label="Stock movement chart">
+        <p-chart type="line" [data]="toLineChart(analytics()!.stockMovement)!" [options]="lineOpts" />
+      </div>
+    </div>
+    <div class="analytics__card">
+      <h4><i class="pi pi-cog" aria-hidden="true"></i> Monthly Production</h4>
+      <div class="analytics__chart" role="img" aria-label="Monthly production chart">
+        <p-chart type="bar" [data]="toChart(analytics()!.monthlyProduction)!" [options]="barOpts" />
+      </div>
+    </div>
+    <div class="analytics__card">
+      <h4><i class="pi pi-inbox" aria-hidden="true"></i> Pending Orders</h4>
+      <div class="analytics__chart" role="img" aria-label="Pending orders chart">
+        <p-chart type="bar" [data]="toChart(analytics()!.pendingOrders)!" [options]="barOpts" />
+      </div>
+    </div>
+  }
+</div>

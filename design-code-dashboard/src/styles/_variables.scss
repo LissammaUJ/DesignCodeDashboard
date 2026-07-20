@@ -1,0 +1,67 @@
+// Design Code Dashboard — Enterprise ERP Theme
+
+:root {
+  --erp-primary: #2563eb;
+  --erp-primary-dark: #1d4ed8;
+  --erp-success: #16a34a;
+  --erp-warning: #ea580c;
+  --erp-danger: #dc2626;
+  --erp-purple: #7c3aed;
+  --erp-bg: #f1f5f9;
+  --erp-surface: #ffffff;
+  --erp-text: #0f172a;
+  --erp-text-muted: #64748b;
+  --erp-border: #e2e8f0;
+  --erp-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.06);
+  --erp-shadow-hover: 0 12px 32px rgba(15, 23, 42, 0.12);
+  --erp-radius: 16px;
+  --erp-radius-sm: 10px;
+  --erp-transition: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+// Brand palette
+$primary: #2563eb;
+$primary-dark: #1d4ed8;
+$primary-light: #dbeafe;
+$success: #16a34a;
+$success-light: #dcfce7;
+$warning: #ea580c;
+$warning-light: #ffedd5;
+$danger: #dc2626;
+$danger-light: #fee2e2;
+$purple: #7c3aed;
+$purple-light: #ede9fe;
+
+$gray-50: #f8fafc;
+$gray-100: #f1f5f9;
+$gray-200: #e2e8f0;
+$gray-300: #cbd5e1;
+$gray-400: #94a3b8;
+$gray-500: #64748b;
+$gray-600: #475569;
+$gray-700: #334155;
+$gray-800: #1e293b;
+$gray-900: #0f172a;
+
+$white: #ffffff;
+$background: #f1f5f9;
+$card-radius: 16px;
+$card-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.06);
+$card-shadow-hover: 0 12px 32px rgba(15, 23, 42, 0.12);
+$transition-base: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
+$font-family: 'Source Sans 3', 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+@keyframes erp-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes erp-slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes erp-count-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}

@@ -71,9 +71,12 @@ public class DesignProductionDto
     public decimal CompletedQuantity { get; set; }
     public decimal PendingQuantity { get; set; }
     public decimal RejectedQuantity { get; set; }
+    public DateTime? ProductionDate { get; set; }
     public string Machine { get; set; } = string.Empty;
     public string Department { get; set; } = string.Empty;
     public string Supervisor { get; set; } = string.Empty;
+
+    public static DesignProductionDto Empty { get; } = new();
 }
 
 public class DesignInventoryDto
@@ -86,6 +89,8 @@ public class DesignInventoryDto
     public string Rack { get; set; } = string.Empty;
     public string Location { get; set; } = string.Empty;
     public string BatchNumber { get; set; } = string.Empty;
+
+    public static DesignInventoryDto Empty { get; } = new();
 }
 
 public class DesignActivityTimelineDto
@@ -94,6 +99,16 @@ public class DesignActivityTimelineDto
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public DateTime? Date { get; set; }
+    public string Icon { get; set; } = string.Empty;
+    public string Color { get; set; } = string.Empty;
+}
+
+/// <summary>Standalone activity-timeline API item (GET /api/designs/{id}/activity-timeline).</summary>
+public class DesignActivityItemDto
+{
+    public string Title { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string ActivityDate { get; set; } = string.Empty;
     public string Icon { get; set; } = string.Empty;
     public string Color { get; set; } = string.Empty;
 }

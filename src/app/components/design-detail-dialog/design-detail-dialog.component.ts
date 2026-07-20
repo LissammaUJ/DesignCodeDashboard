@@ -15,9 +15,17 @@ import { TooltipModule } from 'primeng/tooltip';
 import { ToastModule } from 'primeng/toast';
 import { SkeletonModule } from 'primeng/skeleton';
 import { MessageService } from 'primeng/api';
-import { DesignDetail, DesignFilter } from '../../core/models/design.models';
+import {
+  DesignDetail,
+  DesignFilter,
+  DesignInventoryInfo,
+  DesignProductionInfo,
+  TimelineEvent,
+} from '../../core/models/design.models';
 import { DesignApiService } from '../../services/design-api.service';
+import { DesignTabsApiService } from '../../services/design-tabs-api.service';
 import { mapDesignDetail } from '../../shared/design-api.mapper';
+import { forkJoin } from 'rxjs';
 
 @Component({
   selector: 'app-design-detail-dialog',
@@ -50,6 +58,7 @@ export class DesignDetailDialogComponent implements OnInit {
   private readonly config = inject(DynamicDialogConfig);
   private readonly ref = inject(DynamicDialogRef);
   private readonly designApi = inject(DesignApiService);
+  private readonly designTabsApi = inject(DesignTabsApiService);
   private readonly messageService = inject(MessageService);
 
   readonly orderTable = viewChild<Table>('orderTable');
@@ -61,7 +70,7 @@ export class DesignDetailDialogComponent implements OnInit {
   readonly zoomed = signal(false);
   readonly orderSearch = signal('');
 
-  /** Backend has no production / warehouse inventory / timeline payloads. */
+  /** True after tab APIs resolve (grid shows real SQL values, including zeros). */
   readonly hasProductionData = signal(false);
   readonly hasInventoryData = signal(false);
   readonly hasTimelineData = signal(false);
@@ -91,14 +100,46 @@ export class DesignDetailDialogComponent implements OnInit {
           }
         : undefined;
 
-    this.designApi.getDesignById(designID, apiFilter).subscribe({
-      next: (dto) => {
-        const mapped = mapDesignDetail(dto);
-        this.detail.set(mapped);
-        this.hasTimelineData.set(mapped.timeline.length > 0);
-        // Production & warehouse inventory are not on DesignDetailDto
-        this.hasProductionData.set(false);
-        this.hasInventoryData.set(false);
+    forkJoin({
+      detail: this.designApi.getDesignById(designID, apiFilter),
+      production: this.designTabsApi.getProduction(designID),
+      inventory: this.designTabsApi.getInventory(designID),
+      timeline: this.designTabsApi.getActivityTimeline(designID),
+    }).subscribe({
+      next: ({ detail, production, inventory, timeline }) => {
+        const mapped = mapDesignDetail(detail);
+        const productionInfo: DesignProductionInfo = {
+          productionQuantity: Number(production.productionQuantity) || 0,
+          completedQuantity: Number(production.completedQuantity) || 0,
+          pendingQuantity: Number(production.pendingQuantity) || 0,
+          rejectedQuantity: Number(production.rejectedQuantity) || 0,
+          machine: production.machine?.trim() ?? '',
+          department: production.department?.trim() ?? '',
+          supervisor: production.supervisor?.trim() ?? '',
+        };
+        const inventoryInfo: DesignInventoryInfo = {
+          currentStock: Number(inventory.currentStock) || 0,
+          reservedStock: Number(inventory.reservedStock) || 0,
+          availableStock: Number(inventory.availableStock) || 0,
+          pendingStock: Number(inventory.pendingStock) || 0,
+          warehouse: inventory.warehouse?.trim() ?? '',
+          rack: inventory.rack?.trim() ?? '',
+          location: inventory.location?.trim() ?? '',
+          batchNumber: inventory.batchNumber?.trim() ?? '',
+        };
+        const timelineEvents: TimelineEvent[] = (timeline ?? []).map((e) =>
+          this.toTimelineEvent(e.title, e.description, e.activityDate, e.icon, e.color)
+        );
+
+        this.detail.set({
+          ...mapped,
+          production: productionInfo,
+          inventory: inventoryInfo,
+          timeline: timelineEvents,
+        });
+        this.hasProductionData.set(true);
+        this.hasInventoryData.set(true);
+        this.hasTimelineData.set(timelineEvents.length > 0);
         this.loading.set(false);
       },
       error: (err) => {
@@ -111,6 +152,46 @@ export class DesignDetailDialogComponent implements OnInit {
         });
       },
     });
+  }
+
+  /** Maps API activity items onto the existing demo TimelineEvent shape (icons/colors unchanged). */
+  private toTimelineEvent(
+    title?: string | null,
+    description?: string | null,
+    activityDate?: string | null,
+    icon?: string | null,
+    color?: string | null
+  ): TimelineEvent {
+    const t = (title ?? '').trim();
+    const key = t.toLowerCase();
+    const demoIcon =
+      key.includes('created') ? 'pi pi-plus-circle'
+      : key.includes('updated') ? 'pi pi-pencil'
+      : key.includes('production completed') || key.includes('approved') ? 'pi pi-check-circle'
+      : key.includes('production started') ? 'pi pi-play'
+      : key.includes('printed') ? 'pi pi-print'
+      : key.includes('downloaded') ? 'pi pi-download'
+      : key.includes('sold') ? 'pi pi-shopping-bag'
+      : key.includes('returned') ? 'pi pi-replay'
+      : (icon?.trim() || 'pi pi-circle');
+    const demoColor =
+      key.includes('created') || key.includes('production started') ? '#2563eb'
+      : key.includes('updated') ? '#7c3aed'
+      : key.includes('production completed') || key.includes('approved') ? '#16a34a'
+      : key.includes('printed') ? '#64748b'
+      : key.includes('downloaded') ? '#0891b2'
+      : key.includes('sold') ? '#059669'
+      : key.includes('returned') ? '#dc2626'
+      : (color?.trim() || '#64748b');
+
+    return {
+      type: key || 'activity',
+      title: t,
+      description: (description ?? '').trim(),
+      date: (activityDate ?? '').trim(),
+      icon: demoIcon,
+      color: demoColor,
+    };
   }
 
   close(): void {

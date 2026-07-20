@@ -12,8 +12,8 @@ dotnet restore
 dotnet run --launch-profile http
 ```
 
-- Swagger UI: http://localhost:5000/swagger
-- Base URL: http://localhost:5000
+- Swagger UI: http://localhost:100/swagger
+- Base URL: http://localhost:100
 
 ## Endpoints (GET only)
 
@@ -69,7 +69,7 @@ If you see **MSB3027** (`Could not copy … DesignDashboard.Api.exe` / file lock
 
 1. A previous debug session or `dotnet run` is still holding the EXE (not IIS Express — this project uses **Kestrel** via the `http` profile).
 2. The project now runs `taskkill /IM DesignDashboard.Api.exe` **before each build**, so **Build / Rebuild works without restarting Visual Studio**.
-3. Prefer one runner only: either Visual Studio **F5**, or Cursor/`dotnet run` — not both on port 5000.
+3. Prefer one runner only: either Visual Studio **F5**, or Cursor/`dotnet run` — not both on port 100.
 4. Clean/Rebuild: **Build → Clean Solution**, then **Rebuild**, or:
 
 ```bash
@@ -78,4 +78,4 @@ dotnet build
 dotnet run --launch-profile http
 ```
 
-URL binding is only in `Properties/launchSettings.json` (`http://localhost:5000`). Do not also set `Kestrel:Endpoints` in Development appsettings (that caused address override warnings).
+URL binding is only in `Properties/launchSettings.json` (`http://localhost:100`). Do not also set `Kestrel:Endpoints` in Development appsettings (that caused address override warnings).

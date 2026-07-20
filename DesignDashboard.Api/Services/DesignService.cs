@@ -40,6 +40,42 @@ public sealed class DesignService(IDesignRepository repository) : IDesignService
         return repository.GetDesignByIdAsync(designId, filter, cancellationToken);
     }
 
+    public Task<DesignProductionDto> GetProductionByDesignIdAsync(
+        int designId,
+        CancellationToken cancellationToken = default)
+    {
+        if (designId <= 0)
+        {
+            return Task.FromResult(DesignProductionDto.Empty);
+        }
+
+        return repository.GetProductionByDesignIdAsync(designId, cancellationToken);
+    }
+
+    public Task<DesignInventoryDto> GetInventoryByDesignIdAsync(
+        int designId,
+        CancellationToken cancellationToken = default)
+    {
+        if (designId <= 0)
+        {
+            return Task.FromResult(DesignInventoryDto.Empty);
+        }
+
+        return repository.GetInventoryByDesignIdAsync(designId, cancellationToken);
+    }
+
+    public Task<IReadOnlyList<DesignActivityItemDto>> GetActivityTimelineByDesignIdAsync(
+        int designId,
+        CancellationToken cancellationToken = default)
+    {
+        if (designId <= 0)
+        {
+            return Task.FromResult<IReadOnlyList<DesignActivityItemDto>>([]);
+        }
+
+        return repository.GetActivityTimelineByDesignIdAsync(designId, cancellationToken);
+    }
+
     private static void ValidateFilter(DesignFilterRequest filter)
     {
         if (filter.CustomerAccountId <= 0)

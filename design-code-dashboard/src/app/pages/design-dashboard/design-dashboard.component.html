@@ -1,0 +1,165 @@
+<p-toast position="top-right" />
+
+<div class="erp-dashboard">
+  <!-- Gradient Header -->
+  <header class="erp-dashboard__hero">
+    <div class="erp-dashboard__hero-content">
+      <div class="erp-dashboard__hero-icon" aria-hidden="true">
+        <i class="pi pi-th-large"></i>
+      </div>
+      <div>
+        <h1>Design Code Dashboard</h1>
+        <p>Manage and view design codes across your enterprise</p>
+      </div>
+    </div>
+    <div class="erp-dashboard__hero-actions">
+      <span class="erp-dashboard__datetime" [attr.aria-label]="'Current date and time: ' + currentDateTime()">
+        <i class="pi pi-calendar" aria-hidden="true"></i>
+        {{ currentDateTime() }}
+      </span>
+      <p-button
+        icon="pi pi-refresh"
+        label="Refresh"
+        [outlined]="true"
+        severity="contrast"
+        [loading]="loading() || kpiLoading() || analyticsLoading()"
+        ariaLabel="Refresh dashboard"
+        pTooltip="Refresh dashboard data"
+        tooltipPosition="bottom"
+        (onClick)="onRefresh()"
+      />
+      <p-button
+        [icon]="showAnalytics() ? 'pi pi-eye-slash' : 'pi pi-chart-bar'"
+        [label]="showAnalytics() ? 'Hide Analytics' : 'Show Analytics'"
+        [outlined]="true"
+        severity="contrast"
+        [attr.aria-pressed]="showAnalytics()"
+        ariaLabel="Toggle analytics panel"
+        pTooltip="Toggle analytics panel"
+        tooltipPosition="bottom"
+        (onClick)="toggleAnalytics()"
+      />
+    </div>
+  </header>
+
+  <!-- KPI Summary -->
+  <section class="erp-dashboard__section" aria-label="KPI summary">
+    <app-kpi-summary
+      [metrics]="kpiSummary()?.metrics ?? []"
+      [loading]="kpiLoading()"
+    />
+  </section>
+
+  <!-- Advanced Filter -->
+  <section class="erp-dashboard__section" aria-label="Search filters">
+    <app-advanced-filter
+      [filterForm]="filterForm"
+      [options]="filterOptions()"
+      [loading]="loading() || customersLoading()"
+      [collapsed]="filterCollapsed()"
+      (search)="onSearch()"
+      (reset)="onReset()"
+      (toggleCollapse)="toggleFilterCollapse()"
+    />
+  </section>
+
+  <!-- Main Layout -->
+  <div class="erp-dashboard__layout" [class.erp-dashboard__layout--full]="!showAnalytics()">
+    <!-- Design Grid -->
+    <main class="erp-dashboard__main" aria-label="Design results">
+      <div class="erp-dashboard__toolbar">
+        <span class="erp-dashboard__result-count">
+          Showing <strong>{{ designs().length }}</strong> of <strong>{{ totalRecords() | number }}</strong> designs
+        </span>
+        <div class="erp-dashboard__toolbar-right">
+          <p-select
+            [options]="sortByOptions"
+            [ngModel]="sortBy()"
+            (ngModelChange)="onSortByChange($event)"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Sort By"
+            styleClass="erp-dashboard__select"
+            ariaLabel="Sort by field"
+          />
+          <p-select
+            [options]="sortOrderOptions"
+            [ngModel]="sortOrder()"
+            (ngModelChange)="onSortOrderChange($event)"
+            optionLabel="label"
+            optionValue="value"
+            styleClass="erp-dashboard__select"
+            ariaLabel="Sort order"
+          />
+        </div>
+      </div>
+
+      @if (loading() && designs().length === 0) {
+        <div class="erp-dashboard__skeleton-grid" role="status" aria-label="Loading designs">
+          @for (i of [1,2,3,4,5,6,7,8]; track i) {
+            <p-skeleton height="420px" borderRadius="16px" />
+          }
+        </div>
+      } @else if (designs().length === 0) {
+        <div class="erp-dashboard__empty" role="status">
+          <i class="pi pi-inbox" aria-hidden="true"></i>
+          @if (designsError()) {
+            <h3>Unable to load designs</h3>
+            <p>{{ designsError() }}</p>
+          } @else if (!hasSearched()) {
+            <h3>No Designs Found</h3>
+            <p>Select Customer, Start Date, End Date, then click Search.</p>
+          } @else {
+            <h3>No Designs Found</h3>
+            <p>No bill sales for this customer and date range. Try Account 1686 with 2024-01-01 to today.</p>
+          }
+        </div>
+      } @else {
+        <div class="erp-dashboard__grid">
+          @for (design of designs(); track design.designID; let i = $index) {
+            <app-design-card
+              [design]="design"
+              [index]="i"
+              (cardClick)="onCardClick($event)"
+              (action)="onCardAction($event)"
+            />
+          }
+        </div>
+
+        <!-- Infinite Scroll Sentinel -->
+        <div #scrollSentinel class="erp-dashboard__sentinel">
+          @if (loadingMore()) {
+            <p-progressSpinner strokeWidth="3" [style]="{ width: '36px', height: '36px' }" />
+            <span>Loading more designs...</span>
+          }
+        </div>
+
+        <!-- Server-side Pagination -->
+        <div class="erp-dashboard__pagination">
+          <p-paginator
+            [rows]="pageSize()"
+            [totalRecords]="totalRecords()"
+            [first]="(currentPage() - 1) * pageSize()"
+            [rowsPerPageOptions]="pageSizeOptions"
+            (onPageChange)="onPageChange($event)"
+            [showCurrentPageReport]="true"
+            currentPageReportTemplate="Page {currentPage} of {totalPages} | {totalRecords} records"
+          />
+        </div>
+      }
+    </main>
+
+    <!-- Analytics Sidebar -->
+    @if (showAnalytics()) {
+      <aside class="erp-dashboard__analytics" aria-label="Analytics panel">
+        <div class="erp-dashboard__analytics-header">
+          <h3><i class="pi pi-chart-pie" aria-hidden="true"></i> Analytics</h3>
+        </div>
+        <app-analytics-panel
+          [analytics]="analytics()"
+          [loading]="analyticsLoading()"
+        />
+      </aside>
+    }
+  </div>
+</div>
