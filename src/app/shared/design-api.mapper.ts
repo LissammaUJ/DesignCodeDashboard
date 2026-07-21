@@ -290,8 +290,8 @@ export function mapDesignDetail(dto: DesignDetailDto): DesignDetail {
   const category = dto.categoryName?.trim() || NO_DATA;
   const customer = dto.customerName?.trim() || NO_DATA;
   const netWt = product?.netWt != null ? Number(product.netWt) : null;
-  const barcode = product?.barCode?.trim() || NO_DATA;
-  const material = product?.composition?.trim() || NO_DATA;
+  const barcode = product?.barCode?.trim() || 'Not Available';
+  const material = product?.composition?.trim() || 'No Material Available';
 
   const base: DesignListItem = {
     designID: dto.designId,
@@ -300,7 +300,7 @@ export function mapDesignDetail(dto: DesignDetailDto): DesignDetail {
     customerAccount: customer === NO_DATA ? '' : customer,
     category: category === NO_DATA ? '' : category,
     subCategory: '',
-    material: material === NO_DATA ? '' : material,
+    material: product?.composition?.trim() || '',
     purity: '',
     grossWeight: 0,
     netWeight: netWt ?? 0,
@@ -329,13 +329,8 @@ export function mapDesignDetail(dto: DesignDetailDto): DesignDetail {
     orderNo: o.orderNo ?? '',
     customer: o.customer ?? '',
     orderDate: formatDisplayDate(o.orderDate),
-    deliveryDate: o.deliveryDate ? formatDisplayDate(o.deliveryDate) : NO_DATA,
     quantity: Number(o.quantity) || 0,
-    pendingQuantity: Number(o.pendingQuantity) || 0,
     amount: Number(o.amount) || 0,
-    status: o.status || NO_DATA,
-    processingStage: o.processingStage || NO_DATA,
-    expectedDelivery: o.deliveryDate ? formatDisplayDate(o.deliveryDate) : NO_DATA,
   }));
 
   return {
@@ -364,8 +359,6 @@ export function mapDesignDetail(dto: DesignDetailDto): DesignDetail {
       totalSalesValue: Number(dto.salesValue) || 0,
       averageSellingPrice: Number(dto.averageSellingPrice) || 0,
       lastSoldDate: formatDisplayDate(dto.lastSoldDate),
-      bestCustomer: customer,
-      topSellingBranch: NO_DATA,
       monthlySales: (dto.monthlySales ?? []).map((m) => ({
         month: m.label,
         quantity: Number(m.quantity) || 0,
@@ -385,7 +378,6 @@ export function mapDesignDetail(dto: DesignDetailDto): DesignDetail {
       pendingQuantity: 0,
       rejectedQuantity: 0,
       productionDate: '',
-      productionDateRaw: null,
       department: '',
       supervisor: '',
     },

@@ -73,21 +73,18 @@
                 <div class="detail-dialog__info"><label>Design ID</label><span>{{ d.general.designID }}</span></div>
                 <div class="detail-dialog__info"><label>Customer Name</label><span>{{ d.general.customer }}</span></div>
                 <div class="detail-dialog__info"><label>Category</label><span>{{ d.general.category }}</span></div>
-                <div class="detail-dialog__info"><label>Sub Category</label><span>{{ d.general.subCategory }}</span></div>
                 <div class="detail-dialog__info"><label>Material</label><span>{{ d.general.material }}</span></div>
-                <div class="detail-dialog__info"><label>Purity</label><span>{{ d.general.purity }}</span></div>
-                <div class="detail-dialog__info">
-                  <label>Gross Weight</label>
-                  <span>{{ hasGrossWeight() ? d.general.grossWeight + ' g' : 'No Data Available' }}</span>
-                </div>
                 <div class="detail-dialog__info">
                   <label>Net Weight</label>
                   <span>{{ hasNetWeight() ? d.general.netWeight + ' g' : 'No Data Available' }}</span>
                 </div>
-                <div class="detail-dialog__info"><label>Designer</label><span>{{ d.general.designer }}</span></div>
                 <div class="detail-dialog__info"><label>Barcode</label><span>{{ d.general.barcode }}</span></div>
                 <div class="detail-dialog__info"><label>Status</label><span>{{ d.general.status }}</span></div>
-                <div class="detail-dialog__info"><label>Account / Contact</label><span>{{ d.general.modifiedDate }}</span></div>
+                <div class="detail-dialog__info"><label>Customer</label><span>{{ d.general.modifiedDate }}</span></div>
+                <div class="detail-dialog__info">
+                  <label>Current Stock</label>
+                  <span>{{ d.inventory.currentStock | number:'1.0-0' }}</span>
+                </div>
               </div>
             </p-tabpanel>
 
@@ -97,8 +94,6 @@
                 <div class="detail-dialog__mini-kpi"><span>Total Sales Value</span><strong>{{ d.sales.totalSalesValue | currency:'INR' }}</strong></div>
                 <div class="detail-dialog__mini-kpi"><span>Avg Sales Price</span><strong>{{ d.sales.averageSellingPrice | currency:'INR' }}</strong></div>
                 <div class="detail-dialog__mini-kpi"><span>Last Sales Date</span><strong>{{ d.sales.lastSoldDate }}</strong></div>
-                <div class="detail-dialog__mini-kpi"><span>Top Customer</span><strong>{{ d.sales.bestCustomer }}</strong></div>
-                <div class="detail-dialog__mini-kpi"><span>Top Branch</span><strong>{{ d.sales.topSellingBranch }}</strong></div>
               </div>
               <div class="detail-dialog__charts-row">
                 <div class="detail-dialog__chart-box">
@@ -137,7 +132,7 @@
                   [rowsPerPageOptions]="[5, 10, 20]"
                   [showCurrentPageReport]="true"
                   currentPageReportTemplate="{first}-{last} of {totalRecords}"
-                  [globalFilterFields]="['orderNo','customer','status','processingStage']"
+                  [globalFilterFields]="['orderNo','customer']"
                   styleClass="p-datatable-sm p-datatable-striped"
                   [scrollable]="true"
                   scrollHeight="320px"
@@ -150,10 +145,6 @@
                       <th pSortableColumn="customer" pResizableColumn>Customer <p-sortIcon field="customer" /></th>
                       <th pSortableColumn="quantity" pResizableColumn>Quantity <p-sortIcon field="quantity" /></th>
                       <th pSortableColumn="orderDate" pResizableColumn>Order Date <p-sortIcon field="orderDate" /></th>
-                      <th pResizableColumn>Delivery Date</th>
-                      <th pSortableColumn="pendingQuantity" pResizableColumn>Pending Quantity <p-sortIcon field="pendingQuantity" /></th>
-                      <th pSortableColumn="status" pResizableColumn>Order Status <p-sortIcon field="status" /></th>
-                      <th pResizableColumn>Processing Stage</th>
                       <th pSortableColumn="amount" pResizableColumn>Order Value <p-sortIcon field="amount" /></th>
                     </tr>
                   </ng-template>
@@ -163,10 +154,6 @@
                       <td>{{ order.customer }}</td>
                       <td>{{ order.quantity }}</td>
                       <td>{{ order.orderDate }}</td>
-                      <td>{{ order.deliveryDate }}</td>
-                      <td>{{ order.pendingQuantity }}</td>
-                      <td><p-tag [value]="order.status" /></td>
-                      <td>{{ order.processingStage }}</td>
                       <td>{{ order.amount | currency:'INR' }}</td>
                     </tr>
                   </ng-template>
@@ -178,27 +165,37 @@
 
             <p-tabpanel value="3">
               @if (hasProductionData()) {
-                <section class="detail-dialog__prod-section" aria-label="Production Summary">
-                  <h5 class="detail-dialog__prod-heading">Production Summary</h5>
-                  <div class="detail-dialog__info-grid">
-                    <div class="detail-dialog__info"><label>Production Quantity</label><span>{{ d.production.productionQuantity }}</span></div>
-                    <div class="detail-dialog__info"><label>Completed Quantity</label><span>{{ d.production.completedQuantity }}</span></div>
-                    <div class="detail-dialog__info"><label>Pending Quantity</label><span>{{ d.production.pendingQuantity }}</span></div>
-                    <div class="detail-dialog__info"><label>Rejected Quantity</label><span>{{ d.production.rejectedQuantity }}</span></div>
-                    <div class="detail-dialog__info"><label>Current Stock</label><span>{{ d.inventory.currentStock }}</span></div>
-                    <div class="detail-dialog__info">
-                      <label>Production Status</label>
-                      <span><p-tag [value]="productionStatus()" [severity]="productionStatusSeverity()" /></span>
-                    </div>
-                  </div>
-                </section>
-
                 <section class="detail-dialog__prod-section" aria-label="Production Details">
                   <h5 class="detail-dialog__prod-heading">Production Details</h5>
-                  <div class="detail-dialog__info-grid">
-                    <div class="detail-dialog__info"><label>Production Date</label><span>{{ d.production.productionDate || 'No Data Available' }}</span></div>
-                    <div class="detail-dialog__info"><label>Department</label><span>{{ d.production.department || 'No Data Available' }}</span></div>
-                    <div class="detail-dialog__info"><label>Supervisor</label><span>{{ d.production.supervisor || 'No Data Available' }}</span></div>
+                  <div class="detail-dialog__info-grid detail-dialog__info-grid--erp">
+                    <div class="detail-dialog__info detail-dialog__info--erp">
+                      <label>Production Quantity</label>
+                      <span>{{ d.production.productionQuantity | number:'1.0-0' }}</span>
+                    </div>
+                    <div class="detail-dialog__info detail-dialog__info--erp">
+                      <label>Completed Quantity</label>
+                      <span>{{ d.production.completedQuantity | number:'1.0-0' }}</span>
+                    </div>
+                    <div class="detail-dialog__info detail-dialog__info--erp">
+                      <label>Pending Quantity</label>
+                      <span>{{ d.production.pendingQuantity | number:'1.0-0' }}</span>
+                    </div>
+                    <div class="detail-dialog__info detail-dialog__info--erp">
+                      <label>Rejected Quantity</label>
+                      <span>{{ d.production.rejectedQuantity | number:'1.0-0' }}</span>
+                    </div>
+                    <div class="detail-dialog__info detail-dialog__info--erp">
+                      <label>Production Date</label>
+                      <span>{{ d.production.productionDate || 'No Data Available' }}</span>
+                    </div>
+                    <div class="detail-dialog__info detail-dialog__info--erp">
+                      <label>Process</label>
+                      <span>{{ d.production.department || 'No Data Available' }}</span>
+                    </div>
+                    <div class="detail-dialog__info detail-dialog__info--erp">
+                      <label>Inspector</label>
+                      <span>{{ d.production.supervisor || 'No Data Available' }}</span>
+                    </div>
                   </div>
                 </section>
               } @else {

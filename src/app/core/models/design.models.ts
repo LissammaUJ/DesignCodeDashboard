@@ -110,8 +110,6 @@ export interface DesignSalesInfo {
   totalSalesValue: number;
   averageSellingPrice: number;
   lastSoldDate: string;
-  bestCustomer: string;
-  topSellingBranch: string;
   monthlySales: { month: string; quantity: number; value: number }[];
   yearlySales: { year: string; quantity: number; value: number }[];
 }
@@ -120,13 +118,8 @@ export interface DesignOrderDetail {
   orderNo: string;
   customer: string;
   orderDate: string;
-  deliveryDate: string;
   quantity: number;
-  pendingQuantity: number;
   amount: number;
-  status: string;
-  processingStage: string;
-  expectedDelivery: string;
 }
 
 export interface DesignProductionInfo {
@@ -135,8 +128,6 @@ export interface DesignProductionInfo {
   pendingQuantity: number;
   rejectedQuantity: number;
   productionDate: string;
-  /** Raw ISO date from API for status calculations (Delayed). */
-  productionDateRaw: string | null;
   department: string;
   supervisor: string;
 }

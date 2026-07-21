@@ -305,8 +305,6 @@ export class DesignService {
       totalSalesValue: base.totalSalesValue,
       averageSellingPrice: base.makingCharge * 1.5,
       lastSoldDate: base.createdDate,
-      bestCustomer: base.customerAccount,
-      topSellingBranch: this.branches[base.designID % this.branches.length],
       monthlySales: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'].map((m, i) => ({
         month: m,
         quantity: Math.floor(base.salesQuantity / 6 * (0.8 + i * 0.05)),
@@ -321,21 +319,14 @@ export class DesignService {
   }
 
   private buildOrderDetails(designID: number): DesignOrderDetail[] {
-    const stages = ['Cutting', 'Polishing', 'Setting', 'Quality Check', 'Packaging'];
     return Array.from({ length: 8 }, (_, i) => {
       const quantity = Math.floor(this.rand(designID + i, 1, 20));
-      const pendingQuantity = Math.floor(this.rand(designID + i + 7, 0, quantity));
       return {
         orderNo: `ORD-${designID}-${1000 + i}`,
         customer: this.customers[(designID + i) % this.customers.length],
         orderDate: this.formatDate(new Date(2026, 5, 10 + i)),
-        deliveryDate: this.formatDate(new Date(2026, 6, 15 + i)),
         quantity,
-        pendingQuantity,
-        status: ['Pending', 'Confirmed', 'In Production', 'Shipped'][i % 4],
         amount: parseFloat((this.rand(designID + i, 5000, 50000)).toFixed(2)),
-        processingStage: stages[i % stages.length],
-        expectedDelivery: this.formatDate(new Date(2026, 6, 20 + i)),
       };
     });
   }
@@ -347,7 +338,6 @@ export class DesignService {
       pendingQuantity: base.pendingOrderQuantity,
       rejectedQuantity: Math.floor(this.rand(base.designID, 0, 10)),
       productionDate: base.createdDate,
-      productionDateRaw: base.createdDate || null,
       department: ['Casting', 'Finishing', 'Setting', 'Polishing'][base.designID % 4],
       supervisor: this.designers[base.designID % this.designers.length],
     };

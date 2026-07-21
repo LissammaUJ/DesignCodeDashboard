@@ -1,5 +1,5 @@
 import { Component, inject, OnInit, signal, viewChild } from '@angular/core';
-import { CurrencyPipe } from '@angular/common';
+import { CurrencyPipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { ChartModule } from 'primeng/chart';
@@ -9,7 +9,6 @@ import { InputIconModule } from 'primeng/inputicon';
 import { InputTextModule } from 'primeng/inputtext';
 import { Table, TableModule } from 'primeng/table';
 import { Tabs, TabList, Tab, TabPanels, TabPanel } from 'primeng/tabs';
-import { TagModule } from 'primeng/tag';
 import { TooltipModule } from 'primeng/tooltip';
 import { ToastModule } from 'primeng/toast';
 import { SkeletonModule } from 'primeng/skeleton';
@@ -30,6 +29,7 @@ import { forkJoin } from 'rxjs';
   standalone: true,
   imports: [
     CurrencyPipe,
+    DecimalPipe,
     FormsModule,
     ButtonModule,
     Tabs,
@@ -39,7 +39,6 @@ import { forkJoin } from 'rxjs';
     TabPanel,
     TableModule,
     ChartModule,
-    TagModule,
     TooltipModule,
     SkeletonModule,
     ToastModule,
@@ -108,7 +107,6 @@ export class DesignDetailDialogComponent implements OnInit {
           pendingQuantity: Number(production.pendingQuantity) || 0,
           rejectedQuantity: Number(production.rejectedQuantity) || 0,
           productionDate: this.formatProductionDate(production.productionDate),
-          productionDateRaw: production.productionDate ?? null,
           department: production.department?.trim() ?? '',
           supervisor: production.supervisor?.trim() ?? '',
         };
@@ -151,42 +149,6 @@ export class DesignDetailDialogComponent implements OnInit {
     });
   }
 
-  /**
-   * Completed → In Progress → Pending; Delayed when still open and production date is > 30 days ago.
-   */
-  productionStatus(): 'Completed' | 'In Progress' | 'Pending' | 'Delayed' {
-    const p = this.detail()?.production;
-    if (!p || p.productionQuantity <= 0) return 'Pending';
-
-    if (p.completedQuantity >= p.productionQuantity) return 'Completed';
-
-    const raw = p.productionDateRaw;
-    if (raw && p.pendingQuantity > 0) {
-      const started = new Date(raw);
-      if (!Number.isNaN(started.getTime())) {
-        const ageDays = (Date.now() - started.getTime()) / (1000 * 60 * 60 * 24);
-        if (ageDays > 30) return 'Delayed';
-      }
-    }
-
-    if (p.completedQuantity > 0) return 'In Progress';
-    return 'Pending';
-  }
-
-  productionStatusSeverity(): 'success' | 'info' | 'warn' | 'danger' | 'secondary' {
-    switch (this.productionStatus()) {
-      case 'Completed':
-        return 'success';
-      case 'In Progress':
-        return 'info';
-      case 'Delayed':
-        return 'danger';
-      case 'Pending':
-      default:
-        return 'warn';
-    }
-  }
-
   prevImage(): void {
     const d = this.detail();
     if (!d?.images.length) return;
@@ -221,14 +183,10 @@ export class DesignDetailDialogComponent implements OnInit {
     return (this.detail()?.orders.length ?? 0) > 0;
   }
 
-  /** Weight fields not on API — avoid showing fake 0 g. */
+  /** Avoid showing fake 0 g when Product.NetWt is missing. */
   hasNetWeight(): boolean {
     const d = this.detail();
     return d != null && d.general.netWeight > 0;
-  }
-
-  hasGrossWeight(): boolean {
-    return false;
   }
 
   monthlyChart() {

@@ -308,7 +308,12 @@ public sealed class DesignRepository(
     {
         const string sql = """
             SELECT
-                CAST(bm.BillId AS NVARCHAR(50)) AS OrderNo,
+                CASE
+                    WHEN bom.OrderNo IS NOT NULL
+                         AND LTRIM(RTRIM(bom.OrderNo)) <> ''
+                    THEN bom.OrderNo
+                    ELSE CAST(bom.BoNumber AS VARCHAR(30))
+                END AS OrderNo,
                 ISNULL(a.AccountName, '') AS Customer,
                 bm.BillDate AS OrderDate,
                 bet.Quantity AS Quantity,
@@ -316,6 +321,7 @@ public sealed class DesignRepository(
             FROM Bill_mas bm
             INNER JOIN Bill_Exp_trn bet ON bm.BillId = bet.BillId
             INNER JOIN Bo_trn bo ON bet.BoSl = bo.BoSl
+            INNER JOIN Bo_mas bom ON bo.BoId = bom.BoId
             INNER JOIN Product p ON bo.ProductId = p.ProductId
             LEFT JOIN Account a ON a.AccountId = bm.AccountId
             WHERE p.DesignId = @DesignId
