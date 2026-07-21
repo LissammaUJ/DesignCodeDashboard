@@ -87,29 +87,12 @@ export interface DesignProductionDto {
   rejectedQuantity: number;
   productionDate?: string | null;
   department: string;
-  machine: string;
   supervisor: string;
 }
 
 /** GET /api/designs/{designId}/inventory */
 export interface DesignInventoryDto {
   currentStock: number;
-  reservedStock: number;
-  availableStock: number;
-  pendingStock: number;
-  warehouse: string;
-  rack: string;
-  location: string;
-  batchNumber: string;
-}
-
-/** GET /api/designs/{designId}/activity-timeline */
-export interface DesignActivityItemDto {
-  title: string;
-  description: string;
-  activityDate: string;
-  icon: string;
-  color: string;
 }
 
 export interface DashboardSummaryDto {

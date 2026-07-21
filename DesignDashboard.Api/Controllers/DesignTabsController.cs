@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace DesignDashboard.Api.Controllers;
 
 /// <summary>
-/// Separate read-only endpoints for design detail tabs (Production / Inventory / Activity Timeline).
+/// Separate read-only endpoints for design detail tabs (Production / Inventory).
 /// </summary>
 [ApiController]
 [Route("api/designs/{designId:int}")]
@@ -21,21 +21,12 @@ public sealed class DesignTabsController(IDesignService designService) : Control
         return Ok(result);
     }
 
-    /// <summary>Inventory summary for a design from SQL Server (StockDet) when available.</summary>
+    /// <summary>Current stock for a design from StockDet (RecQty − IssQty).</summary>
     [HttpGet("inventory")]
     [ProducesResponseType(typeof(DesignInventoryDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetInventory(int designId, CancellationToken cancellationToken)
     {
         var result = await designService.GetInventoryByDesignIdAsync(designId, cancellationToken);
-        return Ok(result);
-    }
-
-    /// <summary>Activity timeline for a design from SQL Server (production slips / stock log).</summary>
-    [HttpGet("activity-timeline")]
-    [ProducesResponseType(typeof(IReadOnlyList<DesignActivityItemDto>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetActivityTimeline(int designId, CancellationToken cancellationToken)
-    {
-        var result = await designService.GetActivityTimelineByDesignIdAsync(designId, cancellationToken);
         return Ok(result);
     }
 }

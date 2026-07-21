@@ -62,7 +62,6 @@ public class DesignDetailDto
     public IReadOnlyList<DesignSalesPointDto> YearlySales { get; set; } = Array.Empty<DesignSalesPointDto>();
     public IReadOnlyList<DesignProductionDto> Production { get; set; } = Array.Empty<DesignProductionDto>();
     public IReadOnlyList<DesignInventoryDto> Inventory { get; set; } = Array.Empty<DesignInventoryDto>();
-    public IReadOnlyList<DesignActivityTimelineDto> ActivityTimeline { get; set; } = Array.Empty<DesignActivityTimelineDto>();
 }
 
 public class DesignProductionDto
@@ -72,7 +71,6 @@ public class DesignProductionDto
     public decimal PendingQuantity { get; set; }
     public decimal RejectedQuantity { get; set; }
     public DateTime? ProductionDate { get; set; }
-    public string Machine { get; set; } = string.Empty;
     public string Department { get; set; } = string.Empty;
     public string Supervisor { get; set; } = string.Empty;
 
@@ -82,33 +80,6 @@ public class DesignProductionDto
 public class DesignInventoryDto
 {
     public decimal CurrentStock { get; set; }
-    public decimal ReservedStock { get; set; }
-    public decimal AvailableStock { get; set; }
-    public decimal PendingStock { get; set; }
-    public string Warehouse { get; set; } = string.Empty;
-    public string Rack { get; set; } = string.Empty;
-    public string Location { get; set; } = string.Empty;
-    public string BatchNumber { get; set; } = string.Empty;
 
     public static DesignInventoryDto Empty { get; } = new();
-}
-
-public class DesignActivityTimelineDto
-{
-    public string Type { get; set; } = string.Empty;
-    public string Title { get; set; } = string.Empty;
-    public string Description { get; set; } = string.Empty;
-    public DateTime? Date { get; set; }
-    public string Icon { get; set; } = string.Empty;
-    public string Color { get; set; } = string.Empty;
-}
-
-/// <summary>Standalone activity-timeline API item (GET /api/designs/{id}/activity-timeline).</summary>
-public class DesignActivityItemDto
-{
-    public string Title { get; set; } = string.Empty;
-    public string Description { get; set; } = string.Empty;
-    public string ActivityDate { get; set; } = string.Empty;
-    public string Icon { get; set; } = string.Empty;
-    public string Color { get; set; } = string.Empty;
 }

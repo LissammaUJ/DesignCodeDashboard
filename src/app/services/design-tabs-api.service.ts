@@ -2,11 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, of } from 'rxjs';
 import { environment } from '../environments/environment';
-import {
-  DesignActivityItemDto,
-  DesignInventoryDto,
-  DesignProductionDto,
-} from '../models/api.models';
+import { DesignInventoryDto, DesignProductionDto } from '../models/api.models';
 
 const emptyProduction = (): DesignProductionDto => ({
   productionQuantity: 0,
@@ -15,19 +11,11 @@ const emptyProduction = (): DesignProductionDto => ({
   rejectedQuantity: 0,
   productionDate: null,
   department: '',
-  machine: '',
   supervisor: '',
 });
 
 const emptyInventory = (): DesignInventoryDto => ({
   currentStock: 0,
-  reservedStock: 0,
-  availableStock: 0,
-  pendingStock: 0,
-  warehouse: '',
-  rack: '',
-  location: '',
-  batchNumber: '',
 });
 
 @Injectable({ providedIn: 'root' })
@@ -45,11 +33,5 @@ export class DesignTabsApiService {
     return this.http
       .get<DesignInventoryDto>(`${this.baseUrl}/${designId}/inventory`)
       .pipe(catchError(() => of(emptyInventory())));
-  }
-
-  getActivityTimeline(designId: number): Observable<DesignActivityItemDto[]> {
-    return this.http
-      .get<DesignActivityItemDto[]>(`${this.baseUrl}/${designId}/activity-timeline`)
-      .pipe(catchError(() => of([])));
   }
 }

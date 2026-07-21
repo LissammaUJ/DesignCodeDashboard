@@ -16,7 +16,6 @@ public interface IDesignRepository
     Task<DesignDetailDto?> GetDesignByIdAsync(int designId, DesignFilterRequest? filter = null, CancellationToken cancellationToken = default);
     Task<DesignProductionDto> GetProductionByDesignIdAsync(int designId, CancellationToken cancellationToken = default);
     Task<DesignInventoryDto> GetInventoryByDesignIdAsync(int designId, CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<DesignActivityItemDto>> GetActivityTimelineByDesignIdAsync(int designId, CancellationToken cancellationToken = default);
 }
 
 public interface IDashboardRepository

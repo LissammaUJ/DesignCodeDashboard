@@ -134,29 +134,15 @@ export interface DesignProductionInfo {
   completedQuantity: number;
   pendingQuantity: number;
   rejectedQuantity: number;
-  machine: string;
+  productionDate: string;
+  /** Raw ISO date from API for status calculations (Delayed). */
+  productionDateRaw: string | null;
   department: string;
   supervisor: string;
 }
 
 export interface DesignInventoryInfo {
   currentStock: number;
-  reservedStock: number;
-  availableStock: number;
-  pendingStock: number;
-  warehouse: string;
-  rack: string;
-  location: string;
-  batchNumber: string;
-}
-
-export interface TimelineEvent {
-  type: string;
-  title: string;
-  description: string;
-  date: string;
-  icon: string;
-  color: string;
 }
 
 export interface DesignDetail extends DesignListItem {
@@ -165,7 +151,6 @@ export interface DesignDetail extends DesignListItem {
   orders: DesignOrderDetail[];
   production: DesignProductionInfo;
   inventory: DesignInventoryInfo;
-  timeline: TimelineEvent[];
 }
 
 export interface DashboardAnalytics {

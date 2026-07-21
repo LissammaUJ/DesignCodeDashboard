@@ -128,7 +128,6 @@ public sealed class DesignRepository(
 
             IReadOnlyList<DesignProductionDto> production = [];
             IReadOnlyList<DesignInventoryDto> inventory = [];
-            IReadOnlyList<DesignActivityTimelineDto> activityTimeline = [];
             try
             {
                 production = await QueryProductionAsync(connection, designId, cancellationToken);
@@ -140,20 +139,12 @@ public sealed class DesignRepository(
 
             try
             {
-                inventory = await QueryInventoryAsync(connection, designId, cancellationToken);
+                var inv = await QueryInventoryAsync(connection, designId, cancellationToken);
+                inventory = [inv];
             }
             catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)
             {
                 logger.LogWarning(ex, "Embedded inventory query failed for DesignId={DesignId}", designId);
-            }
-
-            try
-            {
-                activityTimeline = await QueryActivityTimelineAsync(connection, designId, cancellationToken);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)
-            {
-                logger.LogWarning(ex, "Embedded activity timeline query failed for DesignId={DesignId}", designId);
             }
 
             var accountId = filter?.CustomerAccountId > 0
@@ -202,8 +193,7 @@ public sealed class DesignRepository(
                 MonthlySales = monthly,
                 YearlySales = yearly,
                 Production = production,
-                Inventory = inventory,
-                ActivityTimeline = activityTimeline
+                Inventory = inventory
             };
         }
         catch (Exception ex)
@@ -483,60 +473,12 @@ public sealed class DesignRepository(
                 connection.Open();
             }
 
-            var rows = await QueryInventoryAsync(connection, designId, cancellationToken);
-            if (rows.Count == 0)
-            {
-                return DesignInventoryDto.Empty;
-            }
-
-            // Single summary for the tab UI: totals + location of the largest stock row.
-            var primary = rows[0];
-            return new DesignInventoryDto
-            {
-                CurrentStock = rows.Sum(r => r.CurrentStock),
-                ReservedStock = rows.Sum(r => r.ReservedStock),
-                AvailableStock = rows.Sum(r => r.AvailableStock),
-                PendingStock = rows.Sum(r => r.PendingStock),
-                Warehouse = primary.Warehouse,
-                Rack = primary.Rack,
-                Location = primary.Location,
-                BatchNumber = primary.BatchNumber
-            };
+            return await QueryInventoryAsync(connection, designId, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)
         {
             logger.LogWarning(ex, "Inventory query failed for DesignId={DesignId}; returning empty defaults", designId);
             return DesignInventoryDto.Empty;
-        }
-    }
-
-    public async Task<IReadOnlyList<DesignActivityItemDto>> GetActivityTimelineByDesignIdAsync(
-        int designId,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            using var connection = connectionFactory.CreateConnection();
-            if (connection.State != ConnectionState.Open)
-            {
-                connection.Open();
-            }
-
-            var rows = await QueryActivityTimelineAsync(connection, designId, cancellationToken);
-            return [.. rows.Select(r => new DesignActivityItemDto
-            {
-                Title = r.Title,
-                Description = r.Description,
-                // ISO-like local timestamp for the existing timeline UI
-                ActivityDate = r.Date?.ToString("yyyy-MM-dd'T'HH:mm:ss") ?? string.Empty,
-                Icon = string.IsNullOrWhiteSpace(r.Icon) ? "pi pi-circle" : r.Icon,
-                Color = string.IsNullOrWhiteSpace(r.Color) ? "#64748b" : r.Color
-            })];
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)
-        {
-            logger.LogWarning(ex, "Activity timeline query failed for DesignId={DesignId}; returning empty list", designId);
-            return [];
         }
     }
 
@@ -570,13 +512,11 @@ public sealed class DesignRepository(
                 SUM(CASE WHEN ISNULL(pm.Closed, 0) = 0 THEN pt.Quantity ELSE 0 END) AS PendingQuantity,
                 SUM(ISNULL(pt.RejQty, 0)) AS RejectedQuantity,
                 MAX(pm.ProdSlipDate) AS ProductionDate,
-                ISNULL(MAX(m.MachineName), '') AS Machine,
                 ISNULL(MAX(pr.ProcessName), '') AS Department,
                 ISNULL(MAX(e.EmplName), '') AS Supervisor
             FROM ProdSlip_trn pt
             INNER JOIN ProdSlip_mas pm ON pm.ProdSlipId = pt.ProdSlipId
             LEFT JOIN Process pr ON pr.ProcessId = COALESCE(pt.ProcessId, pm.ProcessId)
-            LEFT JOIN Machine m ON m.MachineId = pt.MachineId
             LEFT JOIN Employee e ON e.EmplId = COALESCE(pm.InspEmplId, pm.Saved_Emp)
             WHERE pt.DesignId = @DesignId;
             """;
@@ -596,7 +536,6 @@ public sealed class DesignRepository(
             PendingQuantity = row.PendingQuantity,
             RejectedQuantity = row.RejectedQuantity,
             ProductionDate = row.ProductionDate,
-            Machine = row.Machine?.Trim() ?? string.Empty,
             Department = row.Department?.Trim() ?? string.Empty,
             Supervisor = row.Supervisor?.Trim() ?? string.Empty
         };
@@ -614,7 +553,6 @@ public sealed class DesignRepository(
                 CAST(0 AS DECIMAL(18, 3)) AS PendingQuantity,
                 CAST(0 AS DECIMAL(18, 3)) AS RejectedQuantity,
                 MAX(bm.BoDate) AS ProductionDate,
-                CAST('' AS NVARCHAR(100)) AS Machine,
                 CAST('' AS NVARCHAR(100)) AS Department,
                 CAST('' AS NVARCHAR(100)) AS Supervisor
             FROM ItemDesign d
@@ -641,7 +579,6 @@ public sealed class DesignRepository(
                 PendingQuantity = 0,
                 RejectedQuantity = 0,
                 ProductionDate = row.ProductionDate,
-                Machine = string.Empty,
                 Department = string.Empty,
                 Supervisor = string.Empty
             };
@@ -652,230 +589,25 @@ public sealed class DesignRepository(
         }
     }
 
-    private static async Task<IReadOnlyList<DesignInventoryDto>> QueryInventoryAsync(
+    private static async Task<DesignInventoryDto> QueryInventoryAsync(
         IDbConnection connection,
         int designId,
         CancellationToken cancellationToken)
     {
         const string sql = """
             SELECT
-                SUM(ISNULL(sd.RecQty, 0) - ISNULL(sd.IssQty, 0)) AS CurrentStock,
-                ISNULL(MAX(reserved.ReservedQty), 0) AS ReservedStock,
-                SUM(ISNULL(sd.RecQty, 0) - ISNULL(sd.IssQty, 0))
-                    - ISNULL(MAX(reserved.ReservedQty), 0) AS AvailableStock,
-                CAST(0 AS DECIMAL(18, 3)) AS PendingStock,
-                ISNULL(MAX(a.AccountName), '') AS Warehouse,
-                ISNULL(MAX(r.RackName), '') AS Rack,
-                ISNULL(CAST(sd.ShelfId AS VARCHAR(20)), '') AS Location,
-                ISNULL(MAX(b.BatchName), ISNULL(CAST(MAX(b.BatchNumber) AS VARCHAR(50)), '')) AS BatchNumber
+                ISNULL(SUM(ISNULL(sd.RecQty, 0) - ISNULL(sd.IssQty, 0)), 0) AS CurrentStock
             FROM StockDet sd
-            LEFT JOIN Rack r ON r.RackId = sd.RackId
-            LEFT JOIN Batch b ON b.BatchId = sd.BatchId
-            LEFT JOIN Account a ON a.AccountId = sd.AccountId
-            LEFT JOIN (
-                SELECT
-                    sd2.DesignId,
-                    sd2.RackId,
-                    sd2.ShelfId,
-                    sd2.BatchId,
-                    sd2.AccountId,
-                    SUM(ISNULL(ba.AllocatedQty, 0)) AS ReservedQty
-                FROM StockDet sd2
-                INNER JOIN BatchAllocate ba ON ba.BatchId = sd2.BatchId
-                    AND (ba.RackId IS NULL OR ba.RackId = sd2.RackId)
-                    AND (ba.ShelfId IS NULL OR ba.ShelfId = sd2.ShelfId)
-                WHERE sd2.DesignId = @DesignId
-                  AND sd2.BatchId IS NOT NULL
-                GROUP BY sd2.DesignId, sd2.RackId, sd2.ShelfId, sd2.BatchId, sd2.AccountId
-            ) reserved ON reserved.DesignId = sd.DesignId
-                AND ISNULL(reserved.RackId, -1) = ISNULL(sd.RackId, -1)
-                AND ISNULL(reserved.ShelfId, -1) = ISNULL(sd.ShelfId, -1)
-                AND ISNULL(reserved.BatchId, -1) = ISNULL(sd.BatchId, -1)
-                AND ISNULL(reserved.AccountId, -1) = ISNULL(sd.AccountId, -1)
-            WHERE sd.DesignId = @DesignId
-            GROUP BY
-                sd.AccountId,
-                sd.RackId,
-                sd.ShelfId,
-                sd.BatchId
-            HAVING SUM(ISNULL(sd.RecQty, 0) - ISNULL(sd.IssQty, 0)) <> 0
-                OR ISNULL(MAX(reserved.ReservedQty), 0) <> 0
-            ORDER BY SUM(ISNULL(sd.RecQty, 0) - ISNULL(sd.IssQty, 0)) DESC;
+            WHERE sd.DesignId = @DesignId;
             """;
 
-        var rows = await connection.QueryAsync<DesignInventoryRow>(
+        var row = await connection.QuerySingleAsync<DesignInventoryRow>(
             new CommandDefinition(sql, new { DesignId = designId }, cancellationToken: cancellationToken));
 
-        return [.. rows.Select(r => new DesignInventoryDto
+        return new DesignInventoryDto
         {
-            CurrentStock = r.CurrentStock,
-            ReservedStock = r.ReservedStock,
-            AvailableStock = r.AvailableStock,
-            PendingStock = r.PendingStock,
-            Warehouse = r.Warehouse?.Trim() ?? string.Empty,
-            Rack = r.Rack?.Trim() ?? string.Empty,
-            Location = r.Location?.Trim() ?? string.Empty,
-            BatchNumber = r.BatchNumber?.Trim() ?? string.Empty
-        })];
-    }
-
-    /// <summary>
-    /// Builds timeline events from existing SQL tables only.
-    /// Icons/colors match the original demo timeline markers.
-    /// Each source is isolated so a missing table never fails the whole response.
-    /// </summary>
-    private static async Task<IReadOnlyList<DesignActivityTimelineDto>> QueryActivityTimelineAsync(
-        IDbConnection connection,
-        int designId,
-        CancellationToken cancellationToken)
-    {
-        var events = new List<DesignActivityTimelineDto>();
-
-        await TryAddActivityRowsAsync(connection, designId, cancellationToken, events, """
-            SELECT TOP 1
-                'created' AS Type,
-                'Created' AS Title,
-                CONCAT('Design ', ISNULL(NULLIF(LTRIM(RTRIM(d.DesignCode)), ''), CAST(d.DesignId AS VARCHAR(20))), ' created') AS Description,
-                CAST(COALESCE(d.Saved_Time, d.DesignDate, d.CreatedDate) AS DATETIME) AS Date,
-                'pi pi-plus-circle' AS Icon,
-                '#2563eb' AS Color
-            FROM ItemDesign d
-            WHERE d.DesignId = @DesignId
-              AND COALESCE(d.Saved_Time, d.DesignDate, d.CreatedDate) IS NOT NULL;
-            """);
-
-        await TryAddActivityRowsAsync(connection, designId, cancellationToken, events, """
-            SELECT TOP 20
-                CASE WHEN ISNULL(pm.Closed, 0) = 1 THEN 'production-completed' ELSE 'production-started' END AS Type,
-                CASE WHEN ISNULL(pm.Closed, 0) = 1 THEN 'Production Completed' ELSE 'Production Started' END AS Title,
-                CONCAT(
-                    'Slip #', pm.ProdSlipNumber,
-                    ' · Qty ', CAST(SUM(pt.Quantity) AS VARCHAR(40)),
-                    CASE WHEN MAX(pr.ProcessName) IS NULL THEN '' ELSE CONCAT(' · ', MAX(pr.ProcessName)) END
-                ) AS Description,
-                CAST(pm.ProdSlipDate AS DATETIME) AS Date,
-                CASE WHEN ISNULL(pm.Closed, 0) = 1 THEN 'pi pi-check-circle' ELSE 'pi pi-play' END AS Icon,
-                CASE WHEN ISNULL(pm.Closed, 0) = 1 THEN '#16a34a' ELSE '#2563eb' END AS Color
-            FROM ProdSlip_trn pt
-            INNER JOIN ProdSlip_mas pm ON pm.ProdSlipId = pt.ProdSlipId
-            LEFT JOIN Process pr ON pr.ProcessId = COALESCE(pt.ProcessId, pm.ProcessId)
-            WHERE pt.DesignId = @DesignId
-            GROUP BY pm.ProdSlipId, pm.ProdSlipNumber, pm.ProdSlipDate, pm.Closed
-            HAVING SUM(pt.Quantity) <> 0 OR SUM(ISNULL(pt.RejQty, 0)) <> 0
-            ORDER BY pm.ProdSlipDate DESC;
-            """);
-
-        await TryAddActivityRowsAsync(connection, designId, cancellationToken, events, """
-            SELECT TOP 20
-                CASE
-                    WHEN ISNULL(sl.RecQty, 0) > 0 AND ISNULL(sl.IssQty, 0) = 0 THEN 'downloaded'
-                    WHEN ISNULL(sl.IssQty, 0) > 0 AND ISNULL(sl.RecQty, 0) = 0 THEN 'updated'
-                    ELSE 'updated'
-                END AS Type,
-                CASE
-                    WHEN ISNULL(sl.RecQty, 0) > 0 AND ISNULL(sl.IssQty, 0) = 0 THEN 'Downloaded'
-                    WHEN ISNULL(sl.IssQty, 0) > 0 AND ISNULL(sl.RecQty, 0) = 0 THEN 'Updated'
-                    ELSE 'Updated'
-                END AS Title,
-                CONCAT(
-                    ISNULL(NULLIF(LTRIM(RTRIM(sl.Details)), ''), 'Stock movement'),
-                    ' · Rec ', CAST(ISNULL(sl.RecQty, 0) AS VARCHAR(40)),
-                    ' · Iss ', CAST(ISNULL(sl.IssQty, 0) AS VARCHAR(40))
-                ) AS Description,
-                CAST(ISNULL(sl.Saved_Time, sl.DocDate) AS DATETIME) AS Date,
-                CASE
-                    WHEN ISNULL(sl.RecQty, 0) > 0 AND ISNULL(sl.IssQty, 0) = 0 THEN 'pi pi-download'
-                    WHEN ISNULL(sl.IssQty, 0) > 0 AND ISNULL(sl.RecQty, 0) = 0 THEN 'pi pi-pencil'
-                    ELSE 'pi pi-pencil'
-                END AS Icon,
-                CASE
-                    WHEN ISNULL(sl.RecQty, 0) > 0 AND ISNULL(sl.IssQty, 0) = 0 THEN '#0891b2'
-                    WHEN ISNULL(sl.IssQty, 0) > 0 AND ISNULL(sl.RecQty, 0) = 0 THEN '#7c3aed'
-                    ELSE '#7c3aed'
-                END AS Color
-            FROM StockDet_Log sl
-            WHERE sl.DesignId = @DesignId
-              AND ISNULL(sl.Saved_Time, sl.DocDate) IS NOT NULL
-            ORDER BY ISNULL(sl.Saved_Time, sl.DocDate) DESC;
-            """);
-
-        // Bo_mas / Bo_trn booking activity (try BoId then BoSl join keys).
-        await TryAddActivityRowsAsync(connection, designId, cancellationToken, events, """
-            SELECT TOP 20
-                'created' AS Type,
-                'Created' AS Title,
-                CONCAT('Booking #', ISNULL(CAST(bm.BoNumber AS VARCHAR(40)), CAST(bm.BoId AS VARCHAR(40))), ' · Qty ', CAST(SUM(bt.Quantity) AS VARCHAR(40))) AS Description,
-                CAST(bm.BoDate AS DATETIME) AS Date,
-                'pi pi-plus-circle' AS Icon,
-                '#2563eb' AS Color
-            FROM ItemDesign d
-            INNER JOIN Product p ON p.DesignId = d.DesignId
-            INNER JOIN Bo_trn bt ON bt.ProductId = p.ProductId
-            INNER JOIN Bo_mas bm ON bm.BoId = bt.BoId
-            WHERE d.DesignId = @DesignId
-              AND bm.BoDate IS NOT NULL
-            GROUP BY bm.BoId, bm.BoNumber, bm.BoDate
-            ORDER BY bm.BoDate DESC;
-            """);
-
-        await TryAddActivityRowsAsync(connection, designId, cancellationToken, events, """
-            SELECT TOP 20
-                'created' AS Type,
-                'Created' AS Title,
-                CONCAT('Booking #', ISNULL(CAST(bm.BoNumber AS VARCHAR(40)), CAST(bm.BoSl AS VARCHAR(40))), ' · Qty ', CAST(SUM(bt.Quantity) AS VARCHAR(40))) AS Description,
-                CAST(bm.BoDate AS DATETIME) AS Date,
-                'pi pi-plus-circle' AS Icon,
-                '#2563eb' AS Color
-            FROM ItemDesign d
-            INNER JOIN Product p ON p.DesignId = d.DesignId
-            INNER JOIN Bo_trn bt ON bt.ProductId = p.ProductId
-            INNER JOIN Bo_mas bm ON bm.BoSl = bt.BoSl
-            WHERE d.DesignId = @DesignId
-              AND bm.BoDate IS NOT NULL
-            GROUP BY bm.BoSl, bm.BoNumber, bm.BoDate
-            ORDER BY bm.BoDate DESC;
-            """);
-
-        return [.. events
-            .Where(e => e.Date.HasValue)
-            .OrderByDescending(e => e.Date)
-            .Take(50)];
-    }
-
-    private static async Task TryAddActivityRowsAsync(
-        IDbConnection connection,
-        int designId,
-        CancellationToken cancellationToken,
-        List<DesignActivityTimelineDto> target,
-        string sql)
-    {
-        try
-        {
-            var rows = await connection.QueryAsync<DesignActivityRow>(
-                new CommandDefinition(sql, new { DesignId = designId }, cancellationToken: cancellationToken));
-
-            foreach (var r in rows)
-            {
-                if (r.Date is null)
-                {
-                    continue;
-                }
-
-                target.Add(new DesignActivityTimelineDto
-                {
-                    Type = r.Type?.Trim() ?? string.Empty,
-                    Title = r.Title?.Trim() ?? string.Empty,
-                    Description = r.Description?.Trim() ?? string.Empty,
-                    Date = r.Date,
-                    Icon = string.IsNullOrWhiteSpace(r.Icon) ? "pi pi-circle" : r.Icon.Trim(),
-                    Color = string.IsNullOrWhiteSpace(r.Color) ? "#64748b" : r.Color.Trim()
-                });
-            }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)
-        {
-            // Missing table/column for this source — skip and continue with other sources.
-        }
+            CurrentStock = row.CurrentStock
+        };
     }
 
     private static Task<AccountRow?> QueryAccountDetailsAsync(

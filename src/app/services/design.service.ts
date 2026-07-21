@@ -26,7 +26,6 @@ import {
   DesignInventoryInfo,
   SalesStatus,
   SelectOption,
-  TimelineEvent,
 } from '../core/models/design.models';
 
 @Injectable({ providedIn: 'root' })
@@ -177,7 +176,6 @@ export class DesignService {
           orders: this.buildOrderDetails(designID),
           production: this.buildProductionInfo(base),
           inventory: this.buildInventoryInfo(base, designID),
-          timeline: this.buildTimeline(base),
         };
         this.detailCache.set(internalId, detail);
         return detail;
@@ -348,35 +346,17 @@ export class DesignService {
       completedQuantity: base.completedOrderQuantity,
       pendingQuantity: base.pendingOrderQuantity,
       rejectedQuantity: Math.floor(this.rand(base.designID, 0, 10)),
-      machine: `CNC-${(base.designID % 12) + 1}`,
+      productionDate: base.createdDate,
+      productionDateRaw: base.createdDate || null,
       department: ['Casting', 'Finishing', 'Setting', 'Polishing'][base.designID % 4],
       supervisor: this.designers[base.designID % this.designers.length],
     };
   }
 
-  private buildInventoryInfo(base: DesignListItem, designID: number): DesignInventoryInfo {
+  private buildInventoryInfo(base: DesignListItem, _designID: number): DesignInventoryInfo {
     return {
       currentStock: base.currentStock,
-      reservedStock: base.reservedQuantity,
-      availableStock: base.availableStock,
-      pendingStock: base.pendingOrderQuantity,
-      warehouse: `WH-${(designID % 5) + 1}`,
-      rack: `R${(designID % 20) + 1}`,
-      location: `A${(designID % 10) + 1}-${(designID % 50) + 1}`,
-      batchNumber: `BATCH-${designID}-${new Date().getFullYear()}`,
     };
-  }
-
-  private buildTimeline(base: DesignListItem): TimelineEvent[] {
-    return [
-      { type: 'created', title: 'Created', description: `Design ${base.designCode} created`, date: base.createdDate, icon: 'pi pi-plus-circle', color: '#2563eb' },
-      { type: 'updated', title: 'Updated', description: 'Design details modified', date: base.createdDate, icon: 'pi pi-pencil', color: '#7c3aed' },
-      { type: 'approved', title: 'Approved', description: 'Design approved for production', date: base.createdDate, icon: 'pi pi-check', color: '#16a34a' },
-      { type: 'printed', title: 'Printed', description: 'Design sheet printed', date: base.createdDate, icon: 'pi pi-print', color: '#64748b' },
-      { type: 'downloaded', title: 'Downloaded', description: 'Design image downloaded', date: base.createdDate, icon: 'pi pi-download', color: '#0891b2' },
-      { type: 'sold', title: 'Sold', description: `${base.salesQuantity} units sold`, date: base.createdDate, icon: 'pi pi-shopping-bag', color: '#059669' },
-      { type: 'returned', title: 'Returned', description: '2 units returned by customer', date: base.createdDate, icon: 'pi pi-replay', color: '#dc2626' },
-    ];
   }
 
   private sortIds(ids: number[], sortBy: string, sortOrder: string): number[] {

@@ -64,18 +64,6 @@ public sealed class DesignService(IDesignRepository repository) : IDesignService
         return repository.GetInventoryByDesignIdAsync(designId, cancellationToken);
     }
 
-    public Task<IReadOnlyList<DesignActivityItemDto>> GetActivityTimelineByDesignIdAsync(
-        int designId,
-        CancellationToken cancellationToken = default)
-    {
-        if (designId <= 0)
-        {
-            return Task.FromResult<IReadOnlyList<DesignActivityItemDto>>([]);
-        }
-
-        return repository.GetActivityTimelineByDesignIdAsync(designId, cancellationToken);
-    }
-
     private static void ValidateFilter(DesignFilterRequest filter)
     {
         if (filter.CustomerAccountId <= 0)

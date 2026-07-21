@@ -63,8 +63,6 @@
             <p-tab value="1">Sales Summary</p-tab>
             <p-tab value="2">Order Details</p-tab>
             <p-tab value="3">Production</p-tab>
-            <p-tab value="4">Inventory</p-tab>
-            <p-tab value="5">Activity Timeline</p-tab>
           </p-tablist>
 
           <p-tabpanels>
@@ -180,55 +178,31 @@
 
             <p-tabpanel value="3">
               @if (hasProductionData()) {
-                <div class="detail-dialog__info-grid">
-                  <div class="detail-dialog__info"><label>Production Quantity</label><span>{{ d.production.productionQuantity }}</span></div>
-                  <div class="detail-dialog__info"><label>Completed Quantity</label><span>{{ d.production.completedQuantity }}</span></div>
-                  <div class="detail-dialog__info"><label>Pending Quantity</label><span>{{ d.production.pendingQuantity }}</span></div>
-                  <div class="detail-dialog__info"><label>Rejected Quantity</label><span>{{ d.production.rejectedQuantity }}</span></div>
-                  <div class="detail-dialog__info"><label>Machine</label><span>{{ d.production.machine }}</span></div>
-                  <div class="detail-dialog__info"><label>Department</label><span>{{ d.production.department }}</span></div>
-                  <div class="detail-dialog__info"><label>Supervisor</label><span>{{ d.production.supervisor }}</span></div>
-                </div>
-              } @else {
-                <p>No Data Available</p>
-              }
-            </p-tabpanel>
-
-            <p-tabpanel value="4">
-              @if (hasInventoryData()) {
-                <div class="detail-dialog__info-grid">
-                  <div class="detail-dialog__info"><label>Current Stock</label><span>{{ d.inventory.currentStock }}</span></div>
-                  <div class="detail-dialog__info"><label>Reserved Stock</label><span>{{ d.inventory.reservedStock }}</span></div>
-                  <div class="detail-dialog__info"><label>Available Stock</label><span>{{ d.inventory.availableStock }}</span></div>
-                  <div class="detail-dialog__info"><label>Pending Stock</label><span>{{ d.inventory.pendingStock }}</span></div>
-                  <div class="detail-dialog__info"><label>Warehouse</label><span>{{ d.inventory.warehouse }}</span></div>
-                  <div class="detail-dialog__info"><label>Rack</label><span>{{ d.inventory.rack }}</span></div>
-                  <div class="detail-dialog__info"><label>Location</label><span>{{ d.inventory.location }}</span></div>
-                  <div class="detail-dialog__info"><label>Batch Number</label><span>{{ d.inventory.batchNumber }}</span></div>
-                </div>
-              } @else {
-                <p>No Data Available</p>
-              }
-            </p-tabpanel>
-
-            <p-tabpanel value="5">
-              @if (hasTimelineData()) {
-                <p-timeline [value]="d.timeline" align="left">
-                  <ng-template pTemplate="content" let-event>
-                    <div class="detail-dialog__timeline-item">
-                      <strong>{{ event.title }}</strong>
-                      <p>{{ event.description }}</p>
-                      <small>{{ event.date }}</small>
+                <section class="detail-dialog__prod-section" aria-label="Production Summary">
+                  <h5 class="detail-dialog__prod-heading">Production Summary</h5>
+                  <div class="detail-dialog__info-grid">
+                    <div class="detail-dialog__info"><label>Production Quantity</label><span>{{ d.production.productionQuantity }}</span></div>
+                    <div class="detail-dialog__info"><label>Completed Quantity</label><span>{{ d.production.completedQuantity }}</span></div>
+                    <div class="detail-dialog__info"><label>Pending Quantity</label><span>{{ d.production.pendingQuantity }}</span></div>
+                    <div class="detail-dialog__info"><label>Rejected Quantity</label><span>{{ d.production.rejectedQuantity }}</span></div>
+                    <div class="detail-dialog__info"><label>Current Stock</label><span>{{ d.inventory.currentStock }}</span></div>
+                    <div class="detail-dialog__info">
+                      <label>Production Status</label>
+                      <span><p-tag [value]="productionStatus()" [severity]="productionStatusSeverity()" /></span>
                     </div>
-                  </ng-template>
-                  <ng-template pTemplate="marker" let-event>
-                    <span class="detail-dialog__timeline-marker" [style.background]="event.color">
-                      <i [class]="event.icon"></i>
-                    </span>
-                  </ng-template>
-                </p-timeline>
+                  </div>
+                </section>
+
+                <section class="detail-dialog__prod-section" aria-label="Production Details">
+                  <h5 class="detail-dialog__prod-heading">Production Details</h5>
+                  <div class="detail-dialog__info-grid">
+                    <div class="detail-dialog__info"><label>Production Date</label><span>{{ d.production.productionDate || 'No Data Available' }}</span></div>
+                    <div class="detail-dialog__info"><label>Department</label><span>{{ d.production.department || 'No Data Available' }}</span></div>
+                    <div class="detail-dialog__info"><label>Supervisor</label><span>{{ d.production.supervisor || 'No Data Available' }}</span></div>
+                  </div>
+                </section>
               } @else {
-                <p>No Activity Found</p>
+                <p>No Data Available</p>
               }
             </p-tabpanel>
           </p-tabpanels>

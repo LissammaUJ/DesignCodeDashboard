@@ -150,6 +150,21 @@
     span { font-size: 0.875rem; font-weight: 500; color: $gray-800; }
   }
 
+  &__prod-section {
+    margin-bottom: 1.25rem;
+
+    &:last-child { margin-bottom: 0; }
+  }
+
+  &__prod-heading {
+    margin: 0 0 0.75rem;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: $gray-700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
   &__summary-row {
     display: grid;
     grid-template-columns: repeat(3, 1fr);

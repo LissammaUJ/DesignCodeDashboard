@@ -378,26 +378,19 @@ export function mapDesignDetail(dto: DesignDetailDto): DesignDetail {
       })),
     },
     orders,
-    // No production / warehouse inventory / timeline fields on DesignDetailDto
+    // No production / inventory fields on DesignDetailDto (loaded via tab APIs)
     production: {
       productionQuantity: 0,
       completedQuantity: 0,
       pendingQuantity: 0,
       rejectedQuantity: 0,
-      machine: '',
+      productionDate: '',
+      productionDateRaw: null,
       department: '',
       supervisor: '',
     },
     inventory: {
       currentStock: 0,
-      reservedStock: 0,
-      availableStock: 0,
-      pendingStock: 0,
-      warehouse: '',
-      rack: '',
-      location: '',
-      batchNumber: '',
     },
-    timeline: [],
   };
 }
