@@ -4,7 +4,10 @@ namespace DesignDashboard.Api.Interfaces;
 
 public interface ICustomerRepository
 {
-    Task<IReadOnlyList<CustomerDto>> GetActiveCustomersAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<CustomerDto>> GetActiveCustomersAsync(
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IDesignRepository

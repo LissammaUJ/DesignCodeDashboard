@@ -49,6 +49,95 @@ public sealed class DashboardRepository(ISqlConnectionFactory connectionFactory)
         };
     }
 
+    /// <summary>
+    /// Dashboard Summary sales query (CarolERP) — one row per Design.
+    /// PendingOrder / PendingProcess are summed across distinct BoSl for that design.
+    /// Parameters only: @AccountId, @StartDate, @EndDate.
+    /// </summary>
+    private const string DashboardSummarySalesSql = """
+        SELECT
+              sales.DesignId,
+              sales.DesignCode,
+              sales.DesignName,
+              sales.TotalSalesQty,
+              sales.TotalSalesAmount,
+              sales.PendingOrder,
+              sales.PendingProcess,
+              d.ImgThumbData
+        FROM (
+            SELECT
+                  d.DesignId,
+                  d.DesignCode,
+                  d.DesignName,
+                  SUM(bet.Quantity) AS TotalSalesQty,
+                  SUM(bet.Amount * bm.ExchRate) AS TotalSalesAmount,
+                  ISNULL((
+                      SELECT SUM(ord.Quantity + ord.AddlQty - ord.FiledQty)
+                      FROM (
+                          SELECT
+                                bo2.BoSl,
+                                MAX(bo2.Quantity) AS Quantity,
+                                MAX(bo2.AddlQty) AS AddlQty,
+                                MAX(bo2.FiledQty) AS FiledQty
+                          FROM Bill_mas bm2
+                          INNER JOIN Bill_Exp_trn bet2
+                                  ON bm2.BillId = bet2.BillId
+                          INNER JOIN Bo_trn bo2
+                                  ON bet2.BoSl = bo2.BoSl
+                          INNER JOIN Product p2
+                                  ON bo2.ProductId = p2.ProductId
+                          WHERE p2.DesignId = d.DesignId
+                            AND bm2.AccountId = @AccountId
+                            AND bm2.BillDate BETWEEN @StartDate AND @EndDate
+                          GROUP BY bo2.BoSl
+                      ) ord
+                  ), 0) AS PendingOrder,
+                  ISNULL((
+                      SELECT SUM(ord.PendingProcess)
+                      FROM (
+                          SELECT
+                                bo2.BoSl,
+                                ISNULL((
+                                    SELECT SUM(Po_trn.Quantity - LandedQty - ProducedQty)
+                                    FROM Po_trn
+                                    INNER JOIN Pi_trn
+                                           ON Po_trn.PiSl = Pi_trn.PiSl
+                                    WHERE Pi_trn.BoSl = bo2.BoSl
+                                ), 0) AS PendingProcess
+                          FROM Bill_mas bm2
+                          INNER JOIN Bill_Exp_trn bet2
+                                  ON bm2.BillId = bet2.BillId
+                          INNER JOIN Bo_trn bo2
+                                  ON bet2.BoSl = bo2.BoSl
+                          INNER JOIN Product p2
+                                  ON bo2.ProductId = p2.ProductId
+                          WHERE p2.DesignId = d.DesignId
+                            AND bm2.AccountId = @AccountId
+                            AND bm2.BillDate BETWEEN @StartDate AND @EndDate
+                          GROUP BY bo2.BoSl
+                      ) ord
+                  ), 0) AS PendingProcess
+            FROM Bill_mas bm
+            INNER JOIN Bill_Exp_trn bet
+                    ON bm.BillId = bet.BillId
+            INNER JOIN Bo_trn bo
+                    ON bet.BoSl = bo.BoSl
+            INNER JOIN Product p
+                    ON bo.ProductId = p.ProductId
+            INNER JOIN ItemDesign d
+                    ON p.DesignId = d.DesignId
+            WHERE bm.AccountId = @AccountId
+              AND bm.BillDate BETWEEN @StartDate AND @EndDate
+            GROUP BY
+                  d.DesignId,
+                  d.DesignCode,
+                  d.DesignName
+        ) sales
+        INNER JOIN ItemDesign d
+                ON d.DesignId = sales.DesignId
+        ORDER BY sales.DesignCode;
+        """;
+
     private async Task<IReadOnlyList<CustomerSalesResult>> ExecuteCustomerwiseSalesAsync(
         DesignFilterRequest filter,
         CancellationToken cancellationToken)
@@ -56,7 +145,7 @@ public sealed class DashboardRepository(ISqlConnectionFactory connectionFactory)
         using var connection = connectionFactory.CreateConnection();
         var rows = await connection.QueryAsync<CustomerSalesResult>(
             new CommandDefinition(
-                CustomerSalesSql.ByAccountAndDateRange,
+                DashboardSummarySalesSql,
                 new
                 {
                     AccountId = filter.CustomerAccountId,

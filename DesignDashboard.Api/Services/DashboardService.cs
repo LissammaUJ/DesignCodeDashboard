@@ -25,7 +25,17 @@ public sealed class DashboardService(IDashboardRepository repository) : IDashboa
     {
         if (filter.CustomerAccountId <= 0)
         {
-            throw new ArgumentException("customerAccountId is required.", nameof(filter));
+            throw new ArgumentException("accountId (or customerAccountId) is required.", nameof(filter));
+        }
+
+        if (filter.StartDate == default)
+        {
+            throw new ArgumentException("startDate is required.", nameof(filter));
+        }
+
+        if (filter.EndDate == default)
+        {
+            throw new ArgumentException("endDate is required.", nameof(filter));
         }
 
         if (filter.EndDate.Date < filter.StartDate.Date)

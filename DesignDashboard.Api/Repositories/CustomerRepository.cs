@@ -1,4 +1,5 @@
 using DesignDashboard.Api.DTOs;
+using DesignDashboard.Api.Helpers;
 using DesignDashboard.Api.Interfaces;
 using Dapper;
 
@@ -6,22 +7,31 @@ namespace DesignDashboard.Api.Repositories;
 
 public sealed class CustomerRepository(ISqlConnectionFactory connectionFactory) : ICustomerRepository
 {
-    public async Task<IReadOnlyList<CustomerDto>> GetActiveCustomersAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<CustomerDto>> GetActiveCustomersAsync(
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken = default)
     {
-        // Active accounts that appear on bills (sales dashboard). Avoids loading every Account row
-        // over the remote link (~4.6k+), which caused ~45–60s responses and client cancellations.
+        // Customer = Masters.MasType 65, Local Customer = Masters.MasType 95.
         const string sql = """
-            SELECT
+            SELECT DISTINCT
                 CAST(a.AccountId AS INT) AS AccountId,
                 a.AccountName
             FROM Account a
-            WHERE a.Active = 1
-              AND EXISTS (
+            INNER JOIN Masters m
+                ON a.MasId = m.MasId
+            WHERE
+                a.Active = 1
+                AND m.MasType IN (65, 95)
+                AND EXISTS
+                (
                     SELECT 1
                     FROM Bill_mas bm
                     WHERE bm.AccountId = a.AccountId
-              )
-            ORDER BY a.AccountName;
+                      AND bm.BillDate BETWEEN @StartDate AND @EndDate
+                )
+            ORDER BY
+                a.AccountName;
             """;
 
         try
@@ -30,13 +40,17 @@ public sealed class CustomerRepository(ISqlConnectionFactory connectionFactory) 
             var rows = await connection.QueryAsync<CustomerDto>(
                 new CommandDefinition(
                     sql,
+                    new
+                    {
+                        StartDate = DateHelper.StartOfDay(startDate),
+                        EndDate = DateHelper.EndOfDay(endDate)
+                    },
                     cancellationToken: cancellationToken,
                     commandTimeout: 120));
             return [.. rows];
         }
         catch (Exception ex) when (ex is OperationCanceledException or TaskCanceledException)
         {
-            // Client aborted the HTTP request (navigation / refresh / timeout). Not a server fault.
             cancellationToken.ThrowIfCancellationRequested();
             throw;
         }

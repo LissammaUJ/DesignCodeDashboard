@@ -18,6 +18,9 @@ node_modules/
 # ASP.NET Publish
 DesignDashboard.Api/publish/
 
+# Stale duplicate Angular app (do not recreate)
+design-code-dashboard/
+
 # Local tools
 DesignDashboard.Api/dotnet-tools.json
 

@@ -822,7 +822,7 @@ public sealed class DesignRepository(
             SELECT TOP 20
                 'created' AS Type,
                 'Created' AS Title,
-                CONCAT('Booking · Qty ', CAST(SUM(bt.Quantity) AS VARCHAR(40))) AS Description,
+                CONCAT('Booking #', ISNULL(CAST(bm.BoNumber AS VARCHAR(40)), CAST(bm.BoSl AS VARCHAR(40))), ' · Qty ', CAST(SUM(bt.Quantity) AS VARCHAR(40))) AS Description,
                 CAST(bm.BoDate AS DATETIME) AS Date,
                 'pi pi-plus-circle' AS Icon,
                 '#2563eb' AS Color
@@ -832,7 +832,7 @@ public sealed class DesignRepository(
             INNER JOIN Bo_mas bm ON bm.BoSl = bt.BoSl
             WHERE d.DesignId = @DesignId
               AND bm.BoDate IS NOT NULL
-            GROUP BY bm.BoSl, bm.BoDate
+            GROUP BY bm.BoSl, bm.BoNumber, bm.BoDate
             ORDER BY bm.BoDate DESC;
             """);
 

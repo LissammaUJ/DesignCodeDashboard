@@ -7,6 +7,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DecimalPipe } from '@angular/common';
 import {
   AbstractControl,
@@ -18,6 +19,7 @@ import {
   ValidatorFn,
   Validators,
 } from '@angular/forms';
+import { debounceTime, merge } from 'rxjs';
 import { ButtonModule } from 'primeng/button';
 import { DialogService, DynamicDialogModule } from 'primeng/dynamicdialog';
 import { PaginatorModule, PaginatorState } from 'primeng/paginator';
@@ -173,12 +175,17 @@ export class DesignDashboardComponent implements OnInit {
   private clockTimer: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
-    // Wide default range so Search matches existing Bill_mas sales data.
-    this.filterForm.patchValue({
-      startDate: new Date(2024, 0, 1),
-      endDate: new Date(),
-    });
+    // Default date range so the customer dropdown can load after dates exist.
+    this.filterForm.patchValue(
+      {
+        startDate: new Date(2024, 0, 1),
+        endDate: new Date(),
+      },
+      { emitEvent: false }
+    );
+    // Do not call /api/customer without dates — loadCustomers() guards and sends params.
     this.loadCustomers();
+    this.setupCustomerReloadOnDateChange();
     this.setupInfiniteScroll();
     this.startClock();
   }
@@ -237,11 +244,14 @@ export class DesignDashboardComponent implements OnInit {
   }
 
   onReset(): void {
-    this.filterForm.reset({
-      customerAccountId: null,
-      startDate: new Date(2024, 0, 1),
-      endDate: new Date(),
-    });
+    this.filterForm.reset(
+      {
+        customerAccountId: null,
+        startDate: new Date(2024, 0, 1),
+        endDate: new Date(),
+      },
+      { emitEvent: false }
+    );
     this.currentPage.set(1);
     this.allDesigns = [];
     this.designs.set([]);
@@ -250,6 +260,7 @@ export class DesignDashboardComponent implements OnInit {
     this.designsError.set(null);
     this.kpiSummary.set(null);
     this.analytics.set(null);
+    this.loadCustomers();
     this.messageService.add({ severity: 'secondary', summary: 'Reset', detail: 'Filters cleared.' });
   }
 
@@ -302,24 +313,60 @@ export class DesignDashboardComponent implements OnInit {
     this.filterCollapsed.update((v) => !v);
   }
 
+  /** Reload customer dropdown whenever Start/End dates change. */
+  private setupCustomerReloadOnDateChange(): void {
+    const startCtrl = this.filterForm.get('startDate');
+    const endCtrl = this.filterForm.get('endDate');
+    if (!startCtrl || !endCtrl) return;
+
+    merge(startCtrl.valueChanges, endCtrl.valueChanges)
+      .pipe(debounceTime(300), takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.loadCustomers());
+  }
+
   private loadCustomers(): void {
+    const startDate = resolveFilterDate(this.filterForm.value.startDate);
+    const endDate = resolveFilterDate(this.filterForm.value.endDate);
+
+    // Never call GET /api/customer without query params.
+    if (!startDate || !endDate) {
+      this.filterOptions.set({ customers: [] });
+      this.customersLoading.set(false);
+      return;
+    }
+
+    if (new Date(endDate) < new Date(startDate)) {
+      this.filterOptions.set({ customers: [] });
+      this.customersLoading.set(false);
+      return;
+    }
+
     this.customersLoading.set(true);
-    // One-shot HTTP: do not use takeUntilDestroyed here — HMR/recreate was aborting the
-    // long customer request and caused TaskCanceledException on the API.
-    this.customerApi.getCustomers().subscribe({
+    this.customerApi.getCustomers(startDate, endDate).subscribe({
       next: (customers) => {
-        this.filterOptions.set({ customers: mapCustomersToOptions(customers ?? []) });
+        const options = mapCustomersToOptions(customers ?? []);
+        this.filterOptions.set({ customers: options });
         this.customersLoading.set(false);
+
+        const selected = this.filterForm.value.customerAccountId;
+        if (
+          selected != null &&
+          !options.some((o) => o.value === String(selected) || o.value === selected)
+        ) {
+          this.filterForm.patchValue({ customerAccountId: null }, { emitEvent: false });
+        }
+
         if (!customers?.length) {
           this.messageService.add({
             severity: 'warn',
             summary: 'Customers',
-            detail: 'API returned no active customers.',
+            detail: 'No customers with bills in the selected date range.',
           });
         }
       },
       error: (err) => {
         this.customersLoading.set(false);
+        this.filterOptions.set({ customers: [] });
         this.messageService.add({
           severity: 'error',
           summary: 'Customers',
