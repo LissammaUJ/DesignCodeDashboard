@@ -51,20 +51,3 @@ export interface CustomerAccount {
   id: number;
   name: string;
 }
-
-export interface ChartCategoryData {
-  category: string;
-  count: number;
-}
-
-export interface ChartCustomerData {
-  customer: string;
-  count: number;
-}
-
-export interface ChartAnalytics {
-  statusDistribution: DesignSummary;
-  topCategories: ChartCategoryData[];
-  topCustomers: ChartCustomerData[];
-  mostCreatedDesigns: ChartCategoryData[];
-}

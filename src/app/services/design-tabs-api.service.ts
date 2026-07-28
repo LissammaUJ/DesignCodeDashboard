@@ -3,16 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, catchError, of } from 'rxjs';
 import { environment } from '../environments/environment';
 import { DesignInventoryDto, DesignProductionDto } from '../models/api.models';
-
-const emptyProduction = (): DesignProductionDto => ({
-  productionQuantity: 0,
-  completedQuantity: 0,
-  pendingQuantity: 0,
-  rejectedQuantity: 0,
-  productionDate: null,
-  department: '',
-  supervisor: '',
-});
+import { handleApiError } from '../shared/api.utils';
 
 const emptyInventory = (): DesignInventoryDto => ({
   currentStock: 0,
@@ -23,12 +14,14 @@ export class DesignTabsApiService {
   private readonly http = inject(HttpClient);
   private readonly baseUrl = `${environment.apiUrl}/designs`;
 
-  getProduction(designId: number): Observable<DesignProductionDto> {
+  /** GET /api/designs/{designId}/production */
+  getProduction(designId: number): Observable<DesignProductionDto[]> {
     return this.http
-      .get<DesignProductionDto>(`${this.baseUrl}/${designId}/production`)
-      .pipe(catchError(() => of(emptyProduction())));
+      .get<DesignProductionDto[]>(`${this.baseUrl}/${designId}/production`)
+      .pipe(catchError(handleApiError));
   }
 
+  /** GET /api/designs/{designId}/inventory */
   getInventory(designId: number): Observable<DesignInventoryDto> {
     return this.http
       .get<DesignInventoryDto>(`${this.baseUrl}/${designId}/inventory`)

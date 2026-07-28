@@ -38,7 +38,7 @@
             [options]="options()['customers'] || []"
             optionLabel="label"
             optionValue="value"
-            [placeholder]="(options()['customers']?.length ?? 0) > 0 ? 'Select Customer' : 'Loading customers...'"
+            [placeholder]="(options()['customers'] || []).length > 0 ? 'Select Customer' : 'Loading customers...'"
             [filter]="true"
             filterPlaceholder="Search customers..."
             [showClear]="true"

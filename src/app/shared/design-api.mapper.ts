@@ -3,7 +3,6 @@ import {
   CustomerSalesDto,
   DashboardSummaryDto,
   DesignDetailDto,
-  DesignListItemDto,
   ProductDetailDto,
 } from '../models/api.models';
 import {
@@ -18,7 +17,7 @@ import {
 
 const NO_DATA = 'No Data Available';
 
-/** Maps GET /api/customer → filter dropdown options (value as string for existing Select). */
+/** Maps GET /api/customer → filter dropdown options. */
 export function mapCustomersToOptions(customers: CustomerDto[]): SelectOption[] {
   return customers.map((c) => ({
     label: c.accountName?.trim() || `Account ${c.accountId}`,
@@ -26,22 +25,15 @@ export function mapCustomersToOptions(customers: CustomerDto[]): SelectOption[] 
   }));
 }
 
-/**
- * Maps GET /api/customer-sales CustomerSalesDto → existing DesignListItem UI model.
- * Field mismatches: totalSalesQty→salesQuantity, totalSalesAmount→totalSalesValue,
- * pendingOrder→pendingOrderQuantity, imageThumbnail→imageUrl, designId→designID.
- */
-export function mapCustomerSalesToListItem(
-  dto: CustomerSalesDto,
-  customerAccount = ''
-): DesignListItem {
+/** Maps GET /api/customer-sales → design card model. */
+export function mapCustomerSalesToListItem(dto: CustomerSalesDto): DesignListItem {
   const image = toCardImageUrl(dto.imageThumbnail);
   return {
     designID: dto.designId,
     designCode: dto.designCode ?? '',
     designName: dto.designName ?? '',
     productName: dto.productName?.trim() || '',
-    customerAccount,
+    customerAccount: '',
     category: '',
     subCategory: '',
     material: '',
@@ -70,48 +62,6 @@ export function mapCustomerSalesToListItem(
   };
 }
 
-/**
- * Maps GET /api/designs DesignListItemDto → existing DesignListItem UI model.
- * Keeps card template bindings (designCode, designName, imageUrl, salesQuantity, …).
- * Image comes from ItemDesign.ImgThumbData → API imageThumbnail (data:image/jpeg;base64,...).
- */
-export function mapDesignListItem(dto: DesignListItemDto): DesignListItem {
-  const image = toCardImageUrl(dto.imageThumbnail);
-  return {
-    designID: dto.designId,
-    designCode: dto.designCode ?? '',
-    designName: dto.designName ?? '',
-    productName: dto.productName?.trim() || '',
-    customerAccount: dto.customerName ?? '',
-    category: '',
-    subCategory: '',
-    material: '',
-    purity: '',
-    grossWeight: 0,
-    netWeight: 0,
-    stoneWeight: 0,
-    makingCharge: 0,
-    salesQuantity: Number(dto.salesQty) || 0,
-    totalSalesValue: Number(dto.salesValue) || 0,
-    pendingOrderQuantity: Number(dto.pendingOrders) || 0,
-    pendingOrderValue: 0,
-    inProcessingQuantity: Number(dto.pendingProcess) || 0,
-    completedOrderQuantity: 0,
-    currentStock: 0,
-    availableStock: 0,
-    reservedQuantity: 0,
-    createdDate: '',
-    designer: '',
-    approvalStatus: 'Approved',
-    salesStatus: 'Active',
-    imageUrl: image,
-    images: image ? [image] : [],
-    isFavorite: false,
-    isPinned: false,
-  };
-}
-
-/** Normalize API thumbnail (already data-URL or raw base64) for <img [src]>. */
 function toCardImageUrl(thumbnail: string | null | undefined): string {
   const raw = thumbnail?.trim() ?? '';
   if (!raw) return '';
@@ -119,106 +69,91 @@ function toCardImageUrl(thumbnail: string | null | undefined): string {
   return `data:image/jpeg;base64,${raw}`;
 }
 
-/** Maps GET /api/dashboard/summary → existing KPI tile model. */
-export function mapDashboardSummary(dto: DashboardSummaryDto): DashboardKpiSummary {
-  const metrics = [
-    {
-      key: 'totalDesigns',
-      label: 'Total Designs',
-      value: dto.totalDesigns,
-      growth: 0,
-      trend: 'neutral' as const,
-      icon: 'pi pi-box',
-      gradient: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-      sparkline: [] as number[],
-    },
-    {
-      key: 'totalOrderQty',
-      label: 'Total Order Quantity',
-      value: Number(dto.totalOrderQty) || 0,
-      growth: 0,
-      trend: 'neutral' as const,
-      icon: 'pi pi-list',
-      gradient: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
-      sparkline: [] as number[],
-    },
-    {
-      key: 'totalOrderSalesValue',
-      label: 'Total Order Sales Value',
-      value: Number(dto.totalOrderSalesValue) || 0,
-      growth: 0,
-      trend: 'neutral' as const,
-      icon: 'pi pi-money-bill',
-      gradient: 'linear-gradient(135deg, #6366f1, #4f46e5)',
-      sparkline: [] as number[],
-      format: 'currency' as const,
-    },
-    {
-      key: 'totalSalesQty',
-      label: 'Total Sales Quantity',
-      value: Number(dto.totalSalesQty) || 0,
-      growth: 0,
-      trend: 'neutral' as const,
-      icon: 'pi pi-shopping-cart',
-      gradient: 'linear-gradient(135deg, #0891b2, #0e7490)',
-      sparkline: [] as number[],
-    },
-    {
-      key: 'totalSalesValue',
-      label: 'Total Sales Value',
-      value: Number(dto.totalSalesValue) || 0,
-      growth: 0,
-      trend: 'neutral' as const,
-      icon: 'pi pi-dollar',
-      gradient: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
-      sparkline: [] as number[],
-      format: 'currency' as const,
-    },
-    {
-      key: 'pendingOrderValue',
-      label: 'Pending Order Value',
-      value: Number(dto.pendingOrderValue) || 0,
-      growth: 0,
-      trend: 'neutral' as const,
-      icon: 'pi pi-wallet',
-      gradient: 'linear-gradient(135deg, #db2777, #be185d)',
-      sparkline: [] as number[],
-      format: 'currency' as const,
-    },
-    {
-      key: 'pendingOrders',
-      label: 'Pending Quantity',
-      value: Number(dto.pendingOrders) || 0,
-      growth: 0,
-      trend: 'neutral' as const,
-      icon: 'pi pi-inbox',
-      gradient: 'linear-gradient(135deg, #d97706, #b45309)',
-      sparkline: [] as number[],
-    },
-    {
-      key: 'inProcessing',
-      label: 'In Process (Quantity)',
-      value: Number(dto.inProcessing) || 0,
-      growth: 0,
-      trend: 'neutral' as const,
-      icon: 'pi pi-cog',
-      gradient: 'linear-gradient(135deg, #16a34a, #15803d)',
-      sparkline: [] as number[],
-    },
-    {
-      key: 'completedOrders',
-      label: 'Completed Orders (Quantity)',
-      value: Number(dto.completedOrders) || 0,
-      growth: 0,
-      trend: 'neutral' as const,
-      icon: 'pi pi-check-circle',
-      gradient: 'linear-gradient(135deg, #059669, #047857)',
-      sparkline: [] as number[],
-    },
-  ];
-
+function kpi(
+  key: string,
+  label: string,
+  value: number,
+  icon: string,
+  gradient: string,
+  format?: 'currency'
+) {
   return {
-    metrics,
+    key,
+    label,
+    value: Number(value) || 0,
+    growth: 0,
+    trend: 'neutral' as const,
+    icon,
+    gradient,
+    ...(format ? { format } : {}),
+  };
+}
+
+/** Maps GET /api/dashboard/summary → 9 KPI cards. */
+export function mapDashboardSummary(dto: DashboardSummaryDto): DashboardKpiSummary {
+  return {
+    metrics: [
+      kpi('totalDesigns', 'Total Designs', dto.totalDesigns, 'pi pi-box', 'linear-gradient(135deg, #2563eb, #1d4ed8)'),
+      kpi(
+        'totalOrderQty',
+        'Total Order Quantity',
+        dto.totalOrderQty,
+        'pi pi-list',
+        'linear-gradient(135deg, #0ea5e9, #0284c7)'
+      ),
+      kpi(
+        'totalOrderSalesValue',
+        'Total Order Sales Value',
+        dto.totalOrderSalesValue,
+        'pi pi-money-bill',
+        'linear-gradient(135deg, #6366f1, #4f46e5)',
+        'currency'
+      ),
+      kpi(
+        'totalSalesQty',
+        'Total Sales Quantity',
+        dto.totalSalesQty,
+        'pi pi-shopping-cart',
+        'linear-gradient(135deg, #0891b2, #0e7490)'
+      ),
+      kpi(
+        'totalSalesValue',
+        'Total Sales Value',
+        dto.totalSalesValue,
+        'pi pi-dollar',
+        'linear-gradient(135deg, #7c3aed, #6d28d9)',
+        'currency'
+      ),
+      kpi(
+        'pendingOrderValue',
+        'Pending Order Value',
+        dto.pendingOrderValue,
+        'pi pi-wallet',
+        'linear-gradient(135deg, #db2777, #be185d)',
+        'currency'
+      ),
+      kpi(
+        'pendingOrders',
+        'Pending Quantity',
+        dto.pendingOrders,
+        'pi pi-inbox',
+        'linear-gradient(135deg, #d97706, #b45309)'
+      ),
+      kpi(
+        'inProcessing',
+        'In Process Quantity',
+        dto.inProcessing,
+        'pi pi-cog',
+        'linear-gradient(135deg, #16a34a, #15803d)'
+      ),
+      kpi(
+        'completedOrders',
+        'Completed Orders Quantity',
+        dto.completedOrders,
+        'pi pi-check-circle',
+        'linear-gradient(135deg, #059669, #047857)'
+      ),
+    ],
     lastUpdated: new Date().toLocaleString('en-IN'),
   };
 }
@@ -228,7 +163,7 @@ export function sortDesignListItems(
   sortBy: SortField,
   sortOrder: SortOrder
 ): DesignListItem[] {
-  const sorted = [...items].sort((a, b) => {
+  return [...items].sort((a, b) => {
     let cmp = 0;
     switch (sortBy) {
       case 'designCode':
@@ -250,7 +185,6 @@ export function sortDesignListItems(
     }
     return sortOrder === 'asc' ? cmp : -cmp;
   });
-  return sorted;
 }
 
 export function paginateDesignListItems(
@@ -277,27 +211,23 @@ function firstProduct(products: ProductDetailDto[] | undefined): ProductDetailDt
   return products?.find((p) => p.active) ?? products?.[0];
 }
 
-/**
- * Maps GET /api/design/{id} DesignDetailDto → existing DesignDetail popup model.
- * Only maps fields present on the API; missing tabs stay empty (UI shows No Data Available).
- */
+/** Maps GET /api/design/{id} → design detail dialog model. */
 export function mapDesignDetail(dto: DesignDetailDto): DesignDetail {
   const image = dto.imageThumbnail?.trim() || '';
   const product = firstProduct(dto.productDetails);
   const category = dto.categoryName?.trim() || NO_DATA;
-  const customer = dto.customerName?.trim() || NO_DATA;
   const productName = product?.productName?.trim() || NO_DATA;
   const netWt = product?.netWt != null ? Number(product.netWt) : null;
   const material = product?.composition?.trim() || 'No Material Available';
   const currentStock = Number(dto.inventory?.[0]?.currentStock) || 0;
-  const status = product?.active === false ? 'Inactive' as const : 'Approved' as const;
+  const status = product?.active === false ? ('Inactive' as const) : ('Approved' as const);
 
   const base: DesignListItem = {
     designID: dto.designId,
     designCode: dto.designCode ?? '',
     designName: dto.designName ?? '',
     productName: productName === NO_DATA ? '' : productName,
-    customerAccount: customer === NO_DATA ? '' : customer,
+    customerAccount: '',
     category: category === NO_DATA ? '' : category,
     subCategory: '',
     material: product?.composition?.trim() || '',
@@ -359,17 +289,13 @@ export function mapDesignDetail(dto: DesignDetailDto): DesignDetail {
       })),
     },
     orders,
-    production: {
-      productionQuantity: 0,
-      completedQuantity: 0,
-      pendingQuantity: 0,
-      rejectedQuantity: 0,
-      productionDate: '',
-      department: '',
-      supervisor: '',
-    },
-    inventory: {
-      currentStock,
-    },
+    production: (dto.production ?? []).map((row, index) => ({
+      productionDate: row.productionDate ?? null,
+      location: row.location?.trim() || '—',
+      producedQuantity: Number(row.producedQuantity) || 0,
+      requiredQuantity: Number(row.requiredQuantity) || 0,
+      rowKey: `${dto.designId}-${index}`,
+    })),
+    inventory: { currentStock },
   };
 }

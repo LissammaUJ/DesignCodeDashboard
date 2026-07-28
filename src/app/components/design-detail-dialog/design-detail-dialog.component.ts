@@ -1,4 +1,13 @@
-import { Component, inject, OnInit, signal, viewChild } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  inject,
+  OnInit,
+  signal,
+  viewChild,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CurrencyPipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
@@ -12,31 +21,33 @@ import { Tabs, TabList, Tab, TabPanels, TabPanel } from 'primeng/tabs';
 import { TooltipModule } from 'primeng/tooltip';
 import { ToastModule } from 'primeng/toast';
 import { SkeletonModule } from 'primeng/skeleton';
+import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { MessageService } from 'primeng/api';
-import { DesignDetail, DesignFilter } from '../../core/models/design.models';
+import { DesignDetail, DesignFilter, DesignProductionRow } from '../../core/models/design.models';
+import { DesignProductionDto } from '../../models/api.models';
 import { DesignApiService } from '../../services/design-api.service';
 import { DesignTabsApiService } from '../../services/design-tabs-api.service';
 import { mapDesignDetail } from '../../shared/design-api.mapper';
-import { forkJoin, of } from 'rxjs';
-import { catchError } from 'rxjs/operators';
 
 @Component({
   selector: 'app-design-detail-dialog',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CurrencyPipe,
     DecimalPipe,
     FormsModule,
     ButtonModule,
+    ChartModule,
     Tabs,
     TabList,
     Tab,
     TabPanels,
     TabPanel,
     TableModule,
-    ChartModule,
     TooltipModule,
     SkeletonModule,
+    ProgressSpinnerModule,
     ToastModule,
     IconFieldModule,
     InputIconModule,
@@ -52,6 +63,7 @@ export class DesignDetailDialogComponent implements OnInit {
   private readonly designApi = inject(DesignApiService);
   private readonly designTabsApi = inject(DesignTabsApiService);
   private readonly messageService = inject(MessageService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly orderTable = viewChild<Table>('orderTable');
 
@@ -60,19 +72,55 @@ export class DesignDetailDialogComponent implements OnInit {
   readonly loadError = signal<string | null>(null);
   readonly activeImageIndex = signal(0);
   readonly zoomed = signal(false);
-  readonly orderSearch = signal('');
+  readonly activeTab = signal('0');
+  readonly productionLoading = signal(false);
+  readonly productionLoaded = signal(false);
+
+  private designId = 0;
 
   readonly barOpts = {
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: (ctx: { parsed: { y: number | null } }) => {
+            const value = Number(ctx.parsed?.y) || 0;
+            return new Intl.NumberFormat('en-IN', {
+              style: 'currency',
+              currency: 'INR',
+              maximumFractionDigits: 0,
+            }).format(value);
+          },
+        },
+      },
+    },
+    scales: {
+      x: {
+        ticks: { maxRotation: 45, minRotation: 0, font: { size: 11 } },
+        grid: { display: false },
+      },
+      y: {
+        beginAtZero: true,
+        ticks: {
+          font: { size: 11 },
+          callback: (value: string | number) =>
+            new Intl.NumberFormat('en-IN', {
+              notation: 'compact',
+              maximumFractionDigits: 1,
+            }).format(Number(value)),
+        },
+        grid: { color: 'rgba(148, 163, 184, 0.25)' },
+      },
+    },
   };
 
   ngOnInit(): void {
-    const designID = this.config.data?.designID as number;
+    this.designId = this.config.data?.designID as number;
     const filter = this.config.data?.filter as DesignFilter | undefined;
 
-    if (!designID) {
+    if (!this.designId) {
       this.loading.set(false);
       this.loadError.set('Design ID is missing.');
       return;
@@ -87,20 +135,30 @@ export class DesignDetailDialogComponent implements OnInit {
           }
         : undefined;
 
-    forkJoin({
-      detail: this.designApi.getDesignById(designID, apiFilter),
-      inventory: this.designTabsApi.getInventory(designID).pipe(
-        catchError(() => of({ currentStock: 0 }))
-      ),
-    }).subscribe({
-      next: ({ detail, inventory }) => {
+    // Fast popup: load detail only. Production loads when its tab is opened.
+    this.designApi
+      .getDesignById(this.designId, apiFilter)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+      next: (detail) => {
         const mapped = mapDesignDetail(detail);
-        const currentQuantity = Number(inventory.currentStock) || 0;
+        const currentQuantity =
+          Number(detail.inventory?.[0]?.currentStock) ||
+          Number(mapped.general.currentQuantity) ||
+          0;
+
         this.detail.set({
           ...mapped,
-          general: { ...mapped.general, currentQuantity },
+          general: {
+            ...mapped.general,
+            productName: mapped.general.productName || '-',
+            category: mapped.general.category || '-',
+            material: mapped.general.material || '-',
+            currentQuantity,
+          },
           inventory: { currentStock: currentQuantity },
           currentStock: currentQuantity,
+          production: [],
         });
         this.loading.set(false);
       },
@@ -114,6 +172,14 @@ export class DesignDetailDialogComponent implements OnInit {
         });
       },
     });
+  }
+
+  onTabChange(value: string | number | undefined): void {
+    const tab = String(value ?? '0');
+    this.activeTab.set(tab);
+    if (tab === '3') {
+      this.loadProductionOnce();
+    }
   }
 
   close(): void {
@@ -142,39 +208,59 @@ export class DesignDetailDialogComponent implements OnInit {
     return d.images[this.activeImageIndex()] || d.imageUrl || '';
   }
 
-  hasMonthlySales(): boolean {
-    return (this.detail()?.sales.monthlySales.length ?? 0) > 0;
+  formatProductionDate(value: string | null | undefined): string {
+    if (value == null || value === '') return '—';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return String(value);
+    return d
+      .toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+      .replace(/ /g, '-');
   }
 
-  hasYearlySales(): boolean {
-    return (this.detail()?.sales.yearlySales.length ?? 0) > 0;
-  }
-
-  hasOrders(): boolean {
-    return (this.detail()?.orders.length ?? 0) > 0;
-  }
-
-  /** Avoid showing fake 0 g when Product.NetWt is missing. */
   hasNetWeight(): boolean {
     const d = this.detail();
     return d != null && d.general.netWeight > 0;
   }
 
   monthlyChart() {
-    const d = this.detail();
-    if (!d?.sales.monthlySales.length) return null;
+    const rows = this.detail()?.sales.monthlySales ?? [];
+    if (!rows.length) return null;
     return {
-      labels: d.sales.monthlySales.map((m) => m.month),
-      datasets: [{ data: d.sales.monthlySales.map((m) => m.value), backgroundColor: '#2563eb', borderRadius: 4 }],
+      labels: rows.map((m) => m.month),
+      datasets: [
+        {
+          label: 'Sales Value',
+          data: rows.map((m) => m.value),
+          backgroundColor: 'rgba(37, 99, 235, 0.75)',
+          borderColor: '#2563eb',
+          borderWidth: 1,
+          borderRadius: 6,
+          maxBarThickness: 36,
+        },
+      ],
     };
   }
 
   yearlyChart() {
-    const d = this.detail();
-    if (!d?.sales.yearlySales.length) return null;
+    const rows = this.detail()?.sales.yearlySales ?? [];
+    if (!rows.length) return null;
     return {
-      labels: d.sales.yearlySales.map((y) => y.year),
-      datasets: [{ data: d.sales.yearlySales.map((y) => y.value), backgroundColor: '#7c3aed', borderRadius: 4 }],
+      labels: rows.map((y) => y.year),
+      datasets: [
+        {
+          label: 'Sales Value',
+          data: rows.map((y) => y.value),
+          backgroundColor: 'rgba(124, 58, 237, 0.75)',
+          borderColor: '#7c3aed',
+          borderWidth: 1,
+          borderRadius: 6,
+          maxBarThickness: 42,
+        },
+      ],
     };
   }
 
@@ -184,13 +270,103 @@ export class DesignDetailDialogComponent implements OnInit {
 
   exportOrdersExcel(): void {
     this.orderTable()?.exportCSV();
-    this.messageService.add({ severity: 'success', summary: 'Export', detail: 'Orders exported to Excel.' });
+    this.messageService.add({
+      severity: 'success',
+      summary: 'Export',
+      detail: 'Orders exported to Excel.',
+    });
   }
 
-  smartAction(action: string): void {
+  downloadImage(): void {
+    const src = this.currentImage();
     const d = this.detail();
-    if (!d) return;
-    if (action === 'Copy') navigator.clipboard?.writeText(d.designCode);
-    this.messageService.add({ severity: 'info', summary: action, detail: `${action} — ${d.designCode}` });
+    if (!src || !d) {
+      this.messageService.add({
+        severity: 'warn',
+        summary: 'Download',
+        detail: 'No image available to download.',
+      });
+      return;
+    }
+
+    const link = document.createElement('a');
+    link.href = src;
+    link.download = `${d.designCode || 'design'}.jpg`;
+    link.click();
+  }
+
+  printDetail(): void {
+    window.print();
+  }
+
+  private loadProductionOnce(): void {
+    if (this.productionLoaded() || this.productionLoading() || !this.designId) {
+      return;
+    }
+
+    this.productionLoading.set(true);
+    this.designTabsApi
+      .getProduction(this.designId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+      next: (rows) => {
+        const mapped = this.mapProductionRows(this.designId, rows);
+        this.detail.update((d) => (d ? { ...d, production: mapped } : d));
+        this.productionLoaded.set(true);
+        this.productionLoading.set(false);
+      },
+      error: (err) => {
+        this.detail.update((d) =>
+          d
+            ? {
+                ...d,
+                production: [
+                  {
+                    productionDate: null,
+                    location: '-',
+                    producedQuantity: 0,
+                    requiredQuantity: 0,
+                    rowKey: `${this.designId}-fallback`,
+                  },
+                ],
+              }
+            : d
+        );
+        this.productionLoaded.set(true);
+        this.productionLoading.set(false);
+        this.messageService.add({
+          severity: 'warn',
+          summary: 'Production',
+          detail: err?.message ?? 'Failed to load production records.',
+        });
+      },
+    });
+  }
+
+  private mapProductionRows(
+    designId: number,
+    rows: DesignProductionDto[]
+  ): DesignProductionRow[] {
+    const list = (rows ?? []).map((row, index) => ({
+      productionDate: row.productionDate ?? null,
+      location: row.location?.trim() || '-',
+      producedQuantity: Number(row.producedQuantity) || 0,
+      requiredQuantity: Number(row.requiredQuantity) || 0,
+      rowKey: `${designId}-${index}-${row.productionDate ?? ''}-${row.producedQuantity}`,
+    }));
+
+    if (list.length === 0) {
+      return [
+        {
+          productionDate: null,
+          location: '-',
+          producedQuantity: 0,
+          requiredQuantity: 0,
+          rowKey: `${designId}-empty`,
+        },
+      ];
+    }
+
+    return list;
   }
 }

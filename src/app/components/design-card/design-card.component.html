@@ -6,7 +6,7 @@
   (keydown.space)="$event.preventDefault(); onCardClick()"
   tabindex="0"
   role="button"
-  [attr.aria-label]="'View details for ' + design().designCode + ' — ' + (design().productName || design().designName)"
+  [attr.aria-label]="'View details for ' + designCode() + (productLabel() !== 'No Data Available' ? ' — ' + productLabel() : '')"
 >
   <p-card styleClass="design-card">
     <ng-template #header>
@@ -14,7 +14,7 @@
         @if (design().imageUrl) {
           <img
             [src]="design().imageUrl"
-            [alt]="design().designName"
+            [alt]="designCode()"
             loading="lazy"
             decoding="async"
           />
@@ -36,13 +36,15 @@
 
     <div class="design-card__content">
       <header class="design-card__header">
-        <h3 class="design-card__code">{{ design().designCode }}</h3>
+        <h3 class="design-card__code" [pTooltip]="designCode()" tooltipPosition="top">
+          {{ designCode() }}
+        </h3>
         <p
           class="design-card__product"
-          [pTooltip]="design().productName || 'No Data Available'"
+          [pTooltip]="productLabel()"
           tooltipPosition="top"
         >
-          {{ design().productName || 'No Data Available' }}
+          {{ productLabel() }}
         </p>
       </header>
 
@@ -70,7 +72,7 @@
           icon="pi pi-eye"
           severity="success"
           styleClass="design-card__cta"
-          [attr.aria-label]="'View details for ' + design().designCode"
+          [attr.aria-label]="'View details for ' + designCode()"
           (onClick)="onViewDetails($event)"
         />
       </div>

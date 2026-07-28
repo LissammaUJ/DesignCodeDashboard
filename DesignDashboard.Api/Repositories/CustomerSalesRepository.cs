@@ -8,7 +8,8 @@ using Microsoft.Data.SqlClient;
 namespace DesignDashboard.Api.Repositories;
 
 /// <summary>
-/// Customer design sales for Design Cards — dbo.usp_DesignDashboard only.
+/// Design cards — dbo.usp_DesignDashboard (@Action = GetCustomerSales).
+/// ProductName is returned by the SP (no separate enrichment).
 /// </summary>
 public sealed class CustomerSalesRepository(
     ISqlConnectionFactory connectionFactory,
@@ -23,12 +24,10 @@ public sealed class CustomerSalesRepository(
         var endDate = DateHelper.EndOfDay(filter.EndDate);
 
         logger.LogInformation(
-            "Executing {Proc} Action={Action} for AccountId={AccountId}, StartDate={StartDate}, EndDate={EndDate}",
+            "Executing {Proc} Action={Action} for AccountId={AccountId}",
             DesignDashboardSp.Name,
             DesignDashboardSp.Actions.GetCustomerSales,
-            accountId,
-            startDate,
-            endDate);
+            accountId);
 
         var sw = Stopwatch.StartNew();
         try
@@ -38,8 +37,6 @@ public sealed class CustomerSalesRepository(
 
             var result = await ExecuteCustomerSalesAsync(
                 connection, accountId, startDate, endDate, cancellationToken).ConfigureAwait(false);
-
-            await EnrichProductNamesAsync(connection, result, cancellationToken).ConfigureAwait(false);
 
             var thumbs = await DesignThumbnailLoader.LoadDataUrlsAsync(
                 connectionFactory,
@@ -57,10 +54,9 @@ public sealed class CustomerSalesRepository(
 
             sw.Stop();
             logger.LogInformation(
-                "{Proc} returned {Count} rows ({WithImages} with thumbnails) in {ElapsedMs}ms",
+                "{Proc} returned {Count} rows in {ElapsedMs}ms",
                 DesignDashboardSp.Name,
                 result.Count,
-                result.Count(r => !string.IsNullOrEmpty(r.ImageThumbnail)),
                 sw.ElapsedMilliseconds);
 
             return result;
@@ -68,12 +64,7 @@ public sealed class CustomerSalesRepository(
         catch (Exception ex)
         {
             sw.Stop();
-            logger.LogError(
-                ex,
-                "{Proc} failed for AccountId={AccountId} after {ElapsedMs}ms",
-                DesignDashboardSp.Name,
-                accountId,
-                sw.ElapsedMilliseconds);
+            logger.LogError(ex, "{Proc} failed for AccountId={AccountId}", DesignDashboardSp.Name, accountId);
             throw;
         }
     }
@@ -96,53 +87,21 @@ public sealed class CustomerSalesRepository(
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
+            var productOrd = reader.GetOrdinal("ProductName");
             list.Add(new CustomerSalesDto
             {
                 DesignId = reader.GetInt32(reader.GetOrdinal("DesignId")),
                 DesignCode = reader.GetString(reader.GetOrdinal("DesignCode")).Trim(),
                 DesignName = reader.GetString(reader.GetOrdinal("DesignName")).Trim(),
+                ProductName = reader.IsDBNull(productOrd) ? string.Empty : reader.GetString(productOrd).Trim(),
                 TotalSalesQty = reader.GetDecimal(reader.GetOrdinal("TotalSalesQty")),
                 TotalSalesAmount = reader.GetDecimal(reader.GetOrdinal("TotalSalesAmount")),
                 PendingOrder = reader.GetDecimal(reader.GetOrdinal("PendingOrder")),
                 PendingProcess = reader.GetDecimal(reader.GetOrdinal("PendingProcess")),
-                ProductName = string.Empty,
                 ImageThumbnail = null
             });
         }
 
         return list;
-    }
-
-    private static async Task EnrichProductNamesAsync(
-        SqlConnection connection,
-        List<CustomerSalesDto> rows,
-        CancellationToken cancellationToken)
-    {
-        if (rows.Count == 0) return;
-
-        await using var command = DesignDashboardSp.Create(
-            connection, DesignDashboardSp.Actions.GetProductNames, commandTimeout: 60);
-
-        AdoNetHelper.AddIntIdListParameter(
-            command,
-            "@DesignIds",
-            rows.Select(r => r.DesignId));
-
-        var lookup = new Dictionary<int, string>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-        {
-            var id = reader.GetInt32(reader.GetOrdinal("DesignId"));
-            var nameOrdinal = reader.GetOrdinal("ProductName");
-            var name = reader.IsDBNull(nameOrdinal)
-                ? string.Empty
-                : reader.GetString(nameOrdinal).Trim();
-            lookup[id] = name;
-        }
-
-        foreach (var row in rows)
-        {
-            row.ProductName = lookup.GetValueOrDefault(row.DesignId, string.Empty);
-        }
     }
 }

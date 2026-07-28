@@ -184,24 +184,17 @@ export class DesignDashboardComponent implements OnInit {
   }
 
   onSearch(): void {
-    console.info('[Search] Search clicked');
-
     if (this.filterForm.invalid) {
-      console.info('[Search] stopped — filterForm.invalid', this.filterForm.errors, this.filterForm.value);
       this.filterForm.markAllAsTouched();
       return;
     }
 
     const request = this.buildApiFilter();
-    console.info('[Search] Selected AccountId', request?.customerAccountId);
-    console.info('[Search] Selected StartDate', request?.startDate);
-    console.info('[Search] Selected EndDate', request?.endDate);
-
     if (!request) {
       this.messageService.add({
         severity: 'error',
         summary: 'Invalid filter',
-        detail: `AccountId/dates could not be sent. Raw customer=${JSON.stringify(this.filterForm.value.customerAccountId)}`,
+        detail: 'Select a customer and a valid date range before searching.',
       });
       return;
     }
@@ -398,32 +391,22 @@ export class DesignDashboardComponent implements OnInit {
 
   private fetchDesigns(filter: DesignFilterRequest): void {
     this.loading.set(true);
-    console.info('[Designs] GET /api/customer-sales', filter);
-
-    const customerAccount =
-      this.filterOptions()['customers']?.find((c) => c.value === String(filter.customerAccountId))
-        ?.label ?? '';
 
     this.customerSalesApi.getCustomerSales(filter).subscribe({
       next: (dtos) => {
         const list = Array.isArray(dtos) ? dtos : [];
-        console.info('[Designs] API Response', list.length, list[0] ?? null);
         this.designsError.set(null);
-        this.allDesigns = list.map((dto) => mapCustomerSalesToListItem(dto, customerAccount));
+        this.allDesigns = list.map((dto) => mapCustomerSalesToListItem(dto));
         this.totalRecords.set(this.allDesigns.length);
         this.currentPage.set(1);
         this.applyPage(false);
         this.loading.set(false);
 
-        console.info('[Designs] allDesigns.length', this.allDesigns.length);
-        console.info('[Designs] designs() template length', this.designs().length);
-        console.info('[Designs] totalRecords', this.totalRecords());
-
         if (list.length === 0) {
           this.messageService.add({
             severity: 'info',
             summary: 'No designs',
-            detail: `No bill sales for AccountId=${filter.customerAccountId} between ${filter.startDate} and ${filter.endDate}. Try customer 10 MERCH, LLC (1686) with 2024-01-01 to today.`,
+            detail: `No bill sales for the selected customer between ${filter.startDate} and ${filter.endDate}.`,
           });
         }
       },

@@ -1,4 +1,4 @@
-import { Component, computed, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { ButtonModule } from 'primeng/button';
 import { CardModule } from 'primeng/card';
 import { TagModule } from 'primeng/tag';
@@ -8,6 +8,7 @@ import { ApprovalStatus, CardKpiItem, DesignListItem } from '../../core/models/d
 @Component({
   selector: 'app-design-card',
   standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CardModule, ButtonModule, TagModule, TooltipModule],
   templateUrl: './design-card.component.html',
   styleUrl: './design-card.component.scss',
@@ -18,6 +19,27 @@ export class DesignCardComponent {
 
   readonly cardClick = output<DesignListItem>();
   readonly action = output<{ action: string; design: DesignListItem }>();
+
+  /** Primary identifier — shown once. */
+  readonly designCode = computed(() => this.design().designCode?.trim() || '—');
+
+  /**
+   * Secondary description: Product Name preferred.
+   * Strips any repeated Design Code / Design Name so the code is never shown twice.
+   */
+  readonly productLabel = computed(() => {
+    const d = this.design();
+    const code = d.designCode?.trim() ?? '';
+    const name = d.designName?.trim() ?? '';
+    const product = d.productName?.trim() ?? '';
+
+    const candidates = [product, name].filter(Boolean);
+    for (const raw of candidates) {
+      const cleaned = this.stripRepeatedIdentifier(raw, code, name);
+      if (cleaned) return cleaned;
+    }
+    return 'No Data Available';
+  });
 
   readonly kpiItems = computed<CardKpiItem[]>(() => {
     const d = this.design();
@@ -68,6 +90,34 @@ export class DesignCardComponent {
   onViewDetails(event: Event): void {
     event.stopPropagation();
     this.action.emit({ action: 'View Details', design: this.design() });
+  }
+
+  private stripRepeatedIdentifier(text: string, code: string, name: string): string {
+    let result = text.trim();
+    if (!result) return '';
+
+    const tokens = [code, name]
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0)
+      .filter((t, i, arr) => arr.findIndex((x) => x.toLowerCase() === t.toLowerCase()) === i)
+      .sort((a, b) => b.length - a.length);
+
+    for (const token of tokens) {
+      const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      // Exact duplicate of code/name → drop entirely
+      if (result.toLowerCase() === token.toLowerCase()) {
+        return '';
+      }
+      // Remove trailing / leading / mid occurrences of the design code (e.g. "... FG 08739")
+      result = result
+        .replace(new RegExp(`\\s*[\\-–—|/]?\\s*${escaped}\\s*$`, 'i'), '')
+        .replace(new RegExp(`^\\s*${escaped}\\s*[\\-–—|/:]?\\s*`, 'i'), '')
+        .replace(new RegExp(`\\s*[\\-–—|/]\\s*${escaped}\\s*`, 'gi'), ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    }
+
+    return result;
   }
 
   private fmtNum(n: number): string {

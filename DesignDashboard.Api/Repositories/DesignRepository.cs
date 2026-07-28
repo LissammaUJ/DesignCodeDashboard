@@ -1,4 +1,3 @@
-using System.Data;
 using DesignDashboard.Api.DTOs;
 using DesignDashboard.Api.Helpers;
 using DesignDashboard.Api.Interfaces;
@@ -15,63 +14,6 @@ public sealed class DesignRepository(
     ISqlConnectionFactory connectionFactory,
     ILogger<DesignRepository> logger) : IDesignRepository
 {
-    public async Task<IReadOnlyList<DesignListItemDto>> GetDesignsAsync(
-        DesignFilterRequest filter,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            var sales = await ExecuteCustomerSalesAsync(filter, cancellationToken).ConfigureAwait(false);
-            if (sales.Count == 0)
-            {
-                logger.LogInformation(
-                    "Design sales SP returned 0 rows for AccountId={AccountId} Start={Start} End={End}",
-                    filter.CustomerAccountId, filter.StartDate, filter.EndDate);
-                return [];
-            }
-
-            var designIds = sales.Select(s => s.DesignId).Distinct().ToArray();
-
-            string? customerName = null;
-            try
-            {
-                customerName = await GetAccountNameAsync(filter.CustomerAccountId, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)
-            {
-                logger.LogWarning(ex, "Design account enrichment failed; returning sales rows without customer name");
-            }
-
-            var productNames = await GetProductNamesAsync(designIds, cancellationToken).ConfigureAwait(false);
-            var thumbs = await DesignThumbnailLoader.LoadDataUrlsAsync(
-                connectionFactory, designIds, logger, cancellationToken).ConfigureAwait(false);
-
-            logger.LogInformation(
-                "Design sales SP returned {Count} rows for AccountId={AccountId} ({WithImages} thumbnails)",
-                sales.Count, filter.CustomerAccountId, thumbs.Count);
-
-            return [.. sales.Select(s => new DesignListItemDto
-            {
-                DesignId = s.DesignId,
-                DesignCode = s.DesignCode?.Trim() ?? string.Empty,
-                DesignName = s.DesignName?.Trim() ?? string.Empty,
-                ProductName = productNames.GetValueOrDefault(s.DesignId, string.Empty),
-                CustomerName = customerName ?? string.Empty,
-                ImageThumbnail = thumbs.GetValueOrDefault(s.DesignId),
-                SalesQty = s.TotalSalesQty,
-                SalesValue = s.TotalSalesAmount,
-                PendingOrders = s.PendingOrder,
-                PendingProcess = s.PendingProcess
-            })];
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "GetDesignsAsync failed for AccountId={AccountId}", filter.CustomerAccountId);
-            throw;
-        }
-    }
-
     public async Task<DesignDetailDto?> GetDesignByIdAsync(
         int designId,
         DesignFilterRequest? filter = null,
@@ -89,90 +31,104 @@ public sealed class DesignRepository(
                 return null;
             }
 
-            var (accountId, startDate, endDate) = BuildDesignFilterParams(designId, filter);
-
-            var sales = await QueryCustomerSalesByDesignIdAsync(
-                connection, designId, accountId, startDate, endDate, cancellationToken).ConfigureAwait(false);
-            var products = await QueryProductsAsync(connection, designId, cancellationToken).ConfigureAwait(false);
-            var orders = await QueryOrdersAsync(
-                connection, designId, accountId, startDate, endDate, cancellationToken).ConfigureAwait(false);
-            var monthly = await QueryMonthlySalesAsync(
-                connection, designId, accountId, startDate, endDate, cancellationToken).ConfigureAwait(false);
-            var yearly = await QueryYearlySalesAsync(
-                connection, designId, accountId, startDate, endDate, cancellationToken).ConfigureAwait(false);
-            var lastSold = await QueryLastSoldDateAsync(
-                connection, designId, accountId, startDate, endDate, cancellationToken).ConfigureAwait(false);
-
-            IReadOnlyList<DesignProductionDto> production = [];
-            IReadOnlyList<DesignInventoryDto> inventory = [];
-            try
-            {
-                production = await QueryProductionAsync(connection, designId, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)
-            {
-                logger.LogWarning(ex, "Embedded production query failed for DesignId={DesignId}", designId);
-            }
-
-            try
-            {
-                var inv = await QueryInventoryAsync(connection, designId, cancellationToken)
-                    .ConfigureAwait(false);
-                inventory = [inv];
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)
-            {
-                logger.LogWarning(ex, "Embedded inventory query failed for DesignId={DesignId}", designId);
-            }
+            var (accountId, startDate, endDate) = BuildDesignFilterParams(filter);
 
             var resolvedAccountId = filter?.CustomerAccountId > 0
                 ? filter.CustomerAccountId
                 : design.AccountId;
 
-            AccountRow? account = null;
-            if (resolvedAccountId is > 0)
-            {
-                account = await QueryAccountDetailsAsync(connection, resolvedAccountId.Value, cancellationToken)
-                    .ConfigureAwait(false);
-            }
+            // Parallel detail queries on separate connections — faster popup open.
+            var salesTask = QueryOnNewConnectionAsync(
+                connectionFactory,
+                c => QueryCustomerSalesByDesignIdAsync(c, designId, accountId, startDate, endDate, cancellationToken),
+                cancellationToken);
+            var productsTask = QueryOnNewConnectionAsync(
+                connectionFactory,
+                c => QueryProductsAsync(c, designId, cancellationToken),
+                cancellationToken);
+            var ordersTask = QueryOnNewConnectionAsync(
+                connectionFactory,
+                c => QueryOrdersAsync(c, designId, accountId, startDate, endDate, cancellationToken),
+                cancellationToken);
+            var monthlyTask = QueryOnNewConnectionAsync(
+                connectionFactory,
+                c => QueryMonthlySalesAsync(c, designId, accountId, startDate, endDate, cancellationToken),
+                cancellationToken);
+            var yearlyTask = QueryOnNewConnectionAsync(
+                connectionFactory,
+                c => QueryYearlySalesAsync(c, designId, accountId, startDate, endDate, cancellationToken),
+                cancellationToken);
+            var lastSoldTask = QueryOnNewConnectionAsync(
+                connectionFactory,
+                c => QueryLastSoldDateAsync(c, designId, accountId, startDate, endDate, cancellationToken),
+                cancellationToken);
+            var accountTask = resolvedAccountId is > 0
+                ? QueryOnNewConnectionAsync(
+                    connectionFactory,
+                    c => QueryAccountDetailsAsync(c, resolvedAccountId.Value, cancellationToken),
+                    cancellationToken)
+                : Task.FromResult<AccountRow?>(null);
 
-            var salesQty = sales?.TotalSalesQty ?? 0;
-            var salesValue = sales?.TotalSalesAmount ?? 0;
+            await Task.WhenAll(
+                    salesTask,
+                    productsTask,
+                    ordersTask,
+                    monthlyTask,
+                    yearlyTask,
+                    lastSoldTask,
+                    accountTask)
+                .ConfigureAwait(false);
+
+            var sales = await salesTask.ConfigureAwait(false);
+            IReadOnlyList<ProductDetailDto> products = await productsTask.ConfigureAwait(false);
+            var orders = await ordersTask.ConfigureAwait(false);
+            var monthly = await monthlyTask.ConfigureAwait(false);
+            var yearly = await yearlyTask.ConfigureAwait(false);
+            var lastSold = await lastSoldTask.ConfigureAwait(false);
+            var account = await accountTask.ConfigureAwait(false);
+
+            // Production is loaded on-demand via GET /api/designs/{id}/production (faster popup open).
+            // General Information stock: CurrentQuantity from GetDesignHeader.
+            IReadOnlyList<DesignInventoryDto> inventory =
+            [
+                new DesignInventoryDto { CurrentStock = design.CurrentQuantity }
+            ];
+
+            products = AlignProductDetailsWithHeader(products, design);
 
             return new DesignDetailDto
             {
                 DesignId = design.DesignId,
                 DesignCode = design.DesignCode?.Trim() ?? string.Empty,
                 DesignName = design.DesignName?.Trim() ?? string.Empty,
-                CustomerName = account?.AccountName
-                    ?? design.CustomerName?.Trim()
-                    ?? string.Empty,
+                CustomerName = string.IsNullOrWhiteSpace(account?.AccountName) ? "-" : account!.AccountName.Trim(),
                 ImageThumbnail = ImageHelper.ToBase64DataUrl(design.ImgThumbData),
-                CategoryName = design.CategoryName?.Trim(),
-                SalesQty = salesQty,
-                SalesValue = salesValue,
+                CategoryName = string.IsNullOrWhiteSpace(design.ProductCategory)
+                    ? "-"
+                    : design.ProductCategory.Trim(),
+                SalesQty = sales?.TotalSalesQty ?? 0,
+                SalesValue = sales?.TotalSalesAmount ?? 0,
                 PendingOrders = sales?.PendingOrder ?? 0,
                 PendingProcess = sales?.PendingProcess ?? 0,
                 LastSoldDate = lastSold,
-                AverageSellingPrice = salesQty > 0 ? Math.Round(salesValue / salesQty, 2) : 0,
+                AverageSellingPrice = 0,
                 ProductDetails = products,
                 AccountDetails = account is null
                     ? null
                     : new AccountDetailDto
                     {
                         AccountId = account.AccountId,
-                        AccountName = account.AccountName,
-                        AccountCode = account.AccountCode,
-                        Address = account.Address,
-                        Email = account.Email,
-                        TelNo = account.TelNo,
-                        GstNo = account.GstNo
+                        AccountName = string.IsNullOrWhiteSpace(account.AccountName) ? "-" : account.AccountName,
+                        AccountCode = string.IsNullOrWhiteSpace(account.AccountCode) ? "-" : account.AccountCode,
+                        Address = string.IsNullOrWhiteSpace(account.Address) ? "-" : account.Address,
+                        Email = string.IsNullOrWhiteSpace(account.Email) ? "-" : account.Email,
+                        TelNo = string.IsNullOrWhiteSpace(account.TelNo) ? "-" : account.TelNo,
+                        GstNo = string.IsNullOrWhiteSpace(account.GstNo) ? "-" : account.GstNo
                     },
                 Orders = orders,
                 MonthlySales = monthly,
                 YearlySales = yearly,
-                Production = production,
+                Production = [],
                 Inventory = inventory
             };
         }
@@ -183,7 +139,7 @@ public sealed class DesignRepository(
         }
     }
 
-    public async Task<DesignProductionDto> GetProductionByDesignIdAsync(
+    public async Task<IReadOnlyList<DesignProductionDto>> GetProductionByDesignIdAsync(
         int designId,
         CancellationToken cancellationToken = default)
     {
@@ -192,25 +148,45 @@ public sealed class DesignRepository(
             await using var connection = (SqlConnection)connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-            var fromProdSlip = await QueryProductionSummaryAsync(connection, designId, cancellationToken)
+            var rows = await QueryProductionAsync(connection, designId, cancellationToken)
                 .ConfigureAwait(false);
-            if (fromProdSlip.ProductionQuantity != 0
-                || fromProdSlip.CompletedQuantity != 0
-                || fromProdSlip.PendingQuantity != 0
-                || fromProdSlip.RejectedQuantity != 0
-                || fromProdSlip.ProductionDate.HasValue)
+
+            logger.LogInformation(
+                "GetProduction returned {Count} rows for DesignId={DesignId}",
+                rows.Count,
+                designId);
+
+            // Never return an empty list — UI always has a renderable row.
+            if (rows.Count == 0)
             {
-                return fromProdSlip;
+                return
+                [
+                    new DesignProductionDto
+                    {
+                        ProductionDate = null,
+                        Location = "-",
+                        ProducedQuantity = 0,
+                        RequiredQuantity = 0
+                    }
+                ];
             }
 
-            // Fallback: ItemDesign → Product → Bo_trn → Bo_mas (booking quantities / dates).
-            return await QueryProductionFromBoAsync(connection, designId, cancellationToken)
-                .ConfigureAwait(false);
+            return rows;
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)
         {
-            logger.LogWarning(ex, "Production query failed for DesignId={DesignId}; returning empty defaults", designId);
-            return DesignProductionDto.Empty;
+            // Do not throw — return a safe default row so the Production grid always renders.
+            logger.LogError(ex, "Production query failed for DesignId={DesignId}", designId);
+            return
+            [
+                new DesignProductionDto
+                {
+                    ProductionDate = null,
+                    Location = "-",
+                    ProducedQuantity = 0,
+                    RequiredQuantity = 0
+                }
+            ];
         }
     }
 
@@ -233,92 +209,18 @@ public sealed class DesignRepository(
     }
 
     // -------------------------------------------------------------------------
-    // List helpers
-    // -------------------------------------------------------------------------
-
-    private async Task<IReadOnlyList<CustomerSalesResult>> ExecuteCustomerSalesAsync(
-        DesignFilterRequest filter,
-        CancellationToken cancellationToken)
-    {
-        var accountId = filter.CustomerAccountId;
-        var startDate = DateHelper.StartOfDay(filter.StartDate);
-        var endDate = DateHelper.EndOfDay(filter.EndDate);
-
-        logger.LogInformation(
-            "Design sales SP AccountId={AccountId} Start={StartDate} End={EndDate}",
-            accountId, startDate, endDate);
-
-        await using var connection = (SqlConnection)connectionFactory.CreateConnection();
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-
-        await using var command = DesignDashboardSp.Create(
-            connection, DesignDashboardSp.Actions.GetDesignList);
-        DesignDashboardSp.AddOptionalInt(command, "@AccountId", accountId);
-        DesignDashboardSp.AddOptionalDateTime(command, "@StartDate", startDate);
-        DesignDashboardSp.AddOptionalDateTime(command, "@EndDate", endDate);
-
-        var list = new List<CustomerSalesResult>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-        {
-            list.Add(new CustomerSalesResult
-            {
-                DesignId = reader.GetInt32(reader.GetOrdinal("DesignId")),
-                DesignCode = GetString(reader, "DesignCode"),
-                DesignName = GetString(reader, "DesignName"),
-                TotalSalesQty = GetDecimal(reader, "TotalSalesQty"),
-                TotalSalesAmount = GetDecimal(reader, "TotalSalesAmount"),
-                PendingOrder = GetDecimal(reader, "PendingOrder"),
-                PendingProcess = GetDecimal(reader, "PendingProcess")
-            });
-        }
-
-        return list;
-    }
-
-    private async Task<string?> GetAccountNameAsync(int accountId, CancellationToken cancellationToken)
-    {
-        await using var connection = (SqlConnection)connectionFactory.CreateConnection();
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-
-        await using var command = DesignDashboardSp.Create(
-            connection, DesignDashboardSp.Actions.GetAccountName);
-        DesignDashboardSp.AddOptionalInt(command, "@AccountId", accountId);
-
-        var result = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-        return result is string name ? name : result?.ToString();
-    }
-
-    private async Task<Dictionary<int, string>> GetProductNamesAsync(
-        int[] designIds,
-        CancellationToken cancellationToken)
-    {
-        if (designIds.Length == 0)
-        {
-            return new Dictionary<int, string>();
-        }
-
-        await using var connection = (SqlConnection)connectionFactory.CreateConnection();
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-
-        await using var command = DesignDashboardSp.Create(
-            connection, DesignDashboardSp.Actions.GetProductNames, commandTimeout: 60);
-        AdoNetHelper.AddIntIdListParameter(command, "@DesignIds", designIds);
-
-        var lookup = new Dictionary<int, string>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-        {
-            lookup[reader.GetInt32(reader.GetOrdinal("DesignId"))] =
-                GetString(reader, "ProductName");
-        }
-
-        return lookup;
-    }
-
-    // -------------------------------------------------------------------------
     // Detail helpers
     // -------------------------------------------------------------------------
+
+    private static async Task<T> QueryOnNewConnectionAsync<T>(
+        ISqlConnectionFactory connectionFactory,
+        Func<SqlConnection, Task<T>> work,
+        CancellationToken cancellationToken)
+    {
+        await using var connection = (SqlConnection)connectionFactory.CreateConnection();
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        return await work(connection).ConfigureAwait(false);
+    }
 
     private static async Task<DesignHeaderRow?> QueryDesignHeaderAsync(
         SqlConnection connection,
@@ -343,8 +245,12 @@ public sealed class DesignRepository(
             DesignName = GetStringOrNull(reader, "DesignName"),
             ImgThumbData = reader.IsDBNull(thumbOrd) ? null : (byte[])reader[thumbOrd],
             AccountId = GetNullableInt(reader, "AccountId"),
-            CustomerName = GetStringOrNull(reader, "CustomerName"),
-            CategoryName = GetStringOrNull(reader, "CategoryName")
+            ProductName = GetStringOrNull(reader, "ProductName"),
+            ProductCategory = GetStringOrNull(reader, "ProductCategory"),
+            Material = GetStringOrNull(reader, "Material"),
+            NetWeight = GetNullableDecimal(reader, "NetWeight"),
+            Status = GetStringOrNull(reader, "Status"),
+            CurrentQuantity = GetDecimal(reader, "CurrentQuantity")
         };
     }
 
@@ -402,6 +308,58 @@ public sealed class DesignRepository(
         }
 
         return list;
+    }
+
+    /// <summary>
+    /// Align ProductDetails with GetDesignHeader general-info fields (ProductName, Material, NetWeight, Status).
+    /// </summary>
+    private static IReadOnlyList<ProductDetailDto> AlignProductDetailsWithHeader(
+        IReadOnlyList<ProductDetailDto> products,
+        DesignHeaderRow design)
+    {
+        var headerActive = string.Equals(design.Status, "Approved", StringComparison.OrdinalIgnoreCase);
+
+        if (products.Count == 0)
+        {
+            if (string.IsNullOrWhiteSpace(design.ProductName)
+                && string.IsNullOrWhiteSpace(design.Material)
+                && design.NetWeight is null)
+            {
+                return products;
+            }
+
+            return
+            [
+                new ProductDetailDto
+                {
+                    ProductId = 0,
+                    ProductName = design.ProductName?.Trim() ?? string.Empty,
+                    BarCode = null,
+                    NetWt = design.NetWeight,
+                    Composition = design.Material,
+                    Active = headerActive
+                }
+            ];
+        }
+
+        var first = products[0];
+        return
+        [
+            new ProductDetailDto
+            {
+                ProductId = first.ProductId,
+                ProductName = string.IsNullOrWhiteSpace(design.ProductName)
+                    ? first.ProductName
+                    : design.ProductName.Trim(),
+                BarCode = null,
+                NetWt = design.NetWeight ?? first.NetWt,
+                Composition = string.IsNullOrWhiteSpace(design.Material)
+                    ? first.Composition
+                    : design.Material,
+                Active = string.IsNullOrWhiteSpace(design.Status) ? first.Active : headerActive
+            },
+            .. products.Skip(1)
+        ];
     }
 
     private static async Task<IReadOnlyList<DesignOrderDto>> QueryOrdersAsync(
@@ -508,93 +466,30 @@ public sealed class DesignRepository(
         int designId,
         CancellationToken cancellationToken)
     {
-        var summary = await QueryProductionSummaryAsync(connection, designId, cancellationToken)
-            .ConfigureAwait(false);
-        if (summary.ProductionQuantity == 0
-            && summary.CompletedQuantity == 0
-            && summary.PendingQuantity == 0
-            && summary.RejectedQuantity == 0
-            && summary.ProductionDate is null)
-        {
-            return [];
-        }
-
-        return [summary];
-    }
-
-    private static async Task<DesignProductionDto> QueryProductionSummaryAsync(
-        SqlConnection connection,
-        int designId,
-        CancellationToken cancellationToken)
-    {
         await using var command = DesignDashboardSp.Create(
-            connection, DesignDashboardSp.Actions.GetProduction);
+            connection, DesignDashboardSp.Actions.GetProduction, commandTimeout: 180);
         DesignDashboardSp.AddOptionalInt(command, "@DesignId", designId);
+        DesignDashboardSp.AddOptionalInt(command, "@AccountId", null);
+        DesignDashboardSp.AddOptionalDateTime(command, "@StartDate", null);
+        DesignDashboardSp.AddOptionalDateTime(command, "@EndDate", null);
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-        {
-            return DesignProductionDto.Empty;
-        }
+        var rows = new List<DesignProductionDto>();
 
-        // SUM over empty set returns one row of NULLs — treat as empty.
-        if (reader.IsDBNull(reader.GetOrdinal("ProductionQuantity"))
-            && reader.IsDBNull(reader.GetOrdinal("ProductionDate")))
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            return DesignProductionDto.Empty;
-        }
-
-        return new DesignProductionDto
-        {
-            ProductionQuantity = GetDecimal(reader, "ProductionQuantity"),
-            CompletedQuantity = GetDecimal(reader, "CompletedQuantity"),
-            PendingQuantity = GetDecimal(reader, "PendingQuantity"),
-            RejectedQuantity = GetDecimal(reader, "RejectedQuantity"),
-            ProductionDate = GetNullableDateTime(reader, "ProductionDate"),
-            Department = GetString(reader, "Department"),
-            Supervisor = GetString(reader, "Supervisor")
-        };
-    }
-
-    private static async Task<DesignProductionDto> QueryProductionFromBoAsync(
-        SqlConnection connection,
-        int designId,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            await using var command = DesignDashboardSp.Create(
-                connection, DesignDashboardSp.Actions.GetProductionFromBo);
-            DesignDashboardSp.AddOptionalInt(command, "@DesignId", designId);
-
-            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            rows.Add(new DesignProductionDto
             {
-                return DesignProductionDto.Empty;
-            }
-
-            var qty = GetDecimal(reader, "ProductionQuantity");
-            var date = GetNullableDateTime(reader, "ProductionDate");
-            if (qty == 0 && date is null)
-            {
-                return DesignProductionDto.Empty;
-            }
-
-            return new DesignProductionDto
-            {
-                ProductionQuantity = qty,
-                CompletedQuantity = 0,
-                PendingQuantity = 0,
-                RejectedQuantity = 0,
-                ProductionDate = date,
-                Department = string.Empty,
-                Supervisor = string.Empty
-            };
+                ProductionDate = GetNullableDateTime(reader, "ProductionDate"),
+                Location = string.IsNullOrWhiteSpace(GetString(reader, "Location"))
+                    ? "-"
+                    : GetString(reader, "Location"),
+                ProducedQuantity = GetDecimal(reader, "ProducedQuantity"),
+                RequiredQuantity = GetDecimal(reader, "RequiredQuantity")
+            });
         }
-        catch
-        {
-            return DesignProductionDto.Empty;
-        }
+
+        return rows;
     }
 
     private static async Task<DesignInventoryDto> QueryInventoryAsync(
@@ -650,10 +545,8 @@ public sealed class DesignRepository(
     // -------------------------------------------------------------------------
 
     private static (int? AccountId, DateTime? StartDate, DateTime? EndDate) BuildDesignFilterParams(
-        int designId,
         DesignFilterRequest? filter)
     {
-        _ = designId;
         if (filter is { CustomerAccountId: > 0 })
         {
             return (
@@ -684,37 +577,68 @@ public sealed class DesignRepository(
     private static string GetString(SqlDataReader reader, string column)
     {
         var ord = reader.GetOrdinal(column);
-        return reader.IsDBNull(ord) ? string.Empty : reader.GetString(ord).Trim();
+        if (reader.IsDBNull(ord))
+        {
+            return string.Empty;
+        }
+
+        return Convert.ToString(reader.GetValue(ord))?.Trim() ?? string.Empty;
     }
 
     private static string? GetStringOrNull(SqlDataReader reader, string column)
     {
         var ord = reader.GetOrdinal(column);
-        return reader.IsDBNull(ord) ? null : reader.GetString(ord);
+        if (reader.IsDBNull(ord))
+        {
+            return null;
+        }
+
+        var text = Convert.ToString(reader.GetValue(ord))?.Trim();
+        return string.IsNullOrEmpty(text) ? null : text;
     }
 
     private static decimal GetDecimal(SqlDataReader reader, string column)
     {
         var ord = reader.GetOrdinal(column);
-        return reader.IsDBNull(ord) ? 0m : reader.GetDecimal(ord);
+        if (reader.IsDBNull(ord))
+        {
+            return 0m;
+        }
+
+        return Convert.ToDecimal(reader.GetValue(ord));
     }
 
     private static decimal? GetNullableDecimal(SqlDataReader reader, string column)
     {
         var ord = reader.GetOrdinal(column);
-        return reader.IsDBNull(ord) ? null : reader.GetDecimal(ord);
+        if (reader.IsDBNull(ord))
+        {
+            return null;
+        }
+
+        return Convert.ToDecimal(reader.GetValue(ord));
     }
 
     private static int? GetNullableInt(SqlDataReader reader, string column)
     {
         var ord = reader.GetOrdinal(column);
-        return reader.IsDBNull(ord) ? null : reader.GetInt32(ord);
+        if (reader.IsDBNull(ord))
+        {
+            return null;
+        }
+
+        return Convert.ToInt32(reader.GetValue(ord));
     }
 
     private static DateTime? GetNullableDateTime(SqlDataReader reader, string column)
     {
         var ord = reader.GetOrdinal(column);
-        return reader.IsDBNull(ord) ? null : reader.GetDateTime(ord);
+        if (reader.IsDBNull(ord))
+        {
+            return null;
+        }
+
+        return Convert.ToDateTime(reader.GetValue(ord));
     }
 
     private static byte GetByte(SqlDataReader reader, string column)

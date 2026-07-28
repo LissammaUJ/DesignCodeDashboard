@@ -66,15 +66,10 @@ public class DesignDetailDto
 
 public class DesignProductionDto
 {
-    public decimal ProductionQuantity { get; set; }
-    public decimal CompletedQuantity { get; set; }
-    public decimal PendingQuantity { get; set; }
-    public decimal RejectedQuantity { get; set; }
     public DateTime? ProductionDate { get; set; }
-    public string Department { get; set; } = string.Empty;
-    public string Supervisor { get; set; } = string.Empty;
-
-    public static DesignProductionDto Empty { get; } = new();
+    public string Location { get; set; } = string.Empty;
+    public decimal ProducedQuantity { get; set; }
+    public decimal RequiredQuantity { get; set; }
 }
 
 public class DesignInventoryDto

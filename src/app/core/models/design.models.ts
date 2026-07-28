@@ -70,7 +70,7 @@ export interface KpiMetric {
   trend: 'up' | 'down' | 'neutral';
   icon: string;
   gradient: string;
-  sparkline: number[];
+  sparkline?: number[];
   format?: 'number' | 'currency' | 'datetime';
 }
 
@@ -111,14 +111,13 @@ export interface DesignOrderDetail {
   amount: number;
 }
 
-export interface DesignProductionInfo {
-  productionQuantity: number;
-  completedQuantity: number;
-  pendingQuantity: number;
-  rejectedQuantity: number;
-  productionDate: string;
-  department: string;
-  supervisor: string;
+export interface DesignProductionRow {
+  productionDate: string | null;
+  location: string;
+  producedQuantity: number;
+  requiredQuantity: number;
+  /** Stable client key for PrimeNG table (not from API). */
+  rowKey?: string;
 }
 
 export interface DesignInventoryInfo {
@@ -129,6 +128,6 @@ export interface DesignDetail extends DesignListItem {
   general: DesignGeneralInfo;
   sales: DesignSalesInfo;
   orders: DesignOrderDetail[];
-  production: DesignProductionInfo;
+  production: DesignProductionRow[];
   inventory: DesignInventoryInfo;
 }

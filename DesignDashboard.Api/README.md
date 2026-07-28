@@ -26,7 +26,6 @@ dotnet run --launch-profile http
 | GET | `/api/designs/{designId}/production` | — |
 | GET | `/api/designs/{designId}/inventory` | — |
 | GET | `/api/dashboard/summary` | same filter |
-| GET | `/api/dashboard/charts` | same filter |
 | GET | `/api/product` | optional `designId`, `accountId` |
 | GET | `/api/product/{id}` | optional `accountId` |
 

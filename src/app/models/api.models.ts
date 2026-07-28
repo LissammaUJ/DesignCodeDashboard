@@ -10,19 +10,6 @@ export interface CustomerDto {
   accountName: string;
 }
 
-export interface DesignListItemDto {
-  designId: number;
-  designCode: string;
-  designName: string;
-  productName?: string;
-  customerName: string;
-  imageThumbnail: string | null;
-  salesQty: number;
-  salesValue: number;
-  pendingOrders: number;
-  pendingProcess: number;
-}
-
 export interface ProductDetailDto {
   productId: number;
   productName: string;
@@ -72,24 +59,21 @@ export interface DesignDetailDto {
   pendingOrders: number;
   pendingProcess: number;
   lastSoldDate?: string | null;
-  averageSellingPrice?: number;
   productDetails: ProductDetailDto[];
   accountDetails: AccountDetailDto | null;
   orders?: DesignOrderDto[];
   monthlySales?: DesignSalesPointDto[];
   yearlySales?: DesignSalesPointDto[];
+  production?: DesignProductionDto[];
   inventory?: DesignInventoryDto[];
 }
 
-/** GET /api/designs/{designId}/production */
+/** GET /api/designs/{designId}/production — production grid row */
 export interface DesignProductionDto {
-  productionQuantity: number;
-  completedQuantity: number;
-  pendingQuantity: number;
-  rejectedQuantity: number;
-  productionDate?: string | null;
-  department: string;
-  supervisor: string;
+  productionDate: string | null;
+  location: string;
+  producedQuantity: number;
+  requiredQuantity: number;
 }
 
 /** GET /api/designs/{designId}/inventory */

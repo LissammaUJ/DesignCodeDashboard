@@ -1,16 +1,8 @@
-# Design Dashboard — Stored Procedure Deployment
+# Design Dashboard — Deployment
 
-**Single procedure:** `dbo.usp_DesignDashboard`  
-**Deploy file:** `Database/usp_DesignDashboard.sql`
+**Single SP:** `dbo.usp_DesignDashboard`  
+**File:** `Database/usp_DesignDashboard.sql`
 
-## SSMS steps
+Analytics removed. KPI summary uses `GetSummary` only.
 
-1. Open `Database/usp_DesignDashboard.sql`
-2. Connect to CarolERP
-3. Execute (F5)
-
-Creates:
-- `dbo.IntIdList` (if not exists)
-- `dbo.usp_DesignDashboard` (CREATE OR ALTER)
-
-API calls only `dbo.usp_DesignDashboard` with `@Action` and filter parameters.
+Redeploy on CarolERP in SSMS, then restart the API.

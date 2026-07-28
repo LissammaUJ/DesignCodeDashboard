@@ -5,19 +5,11 @@ public class CustomerSalesResult
     public int DesignId { get; set; }
     public string DesignCode { get; set; } = string.Empty;
     public string DesignName { get; set; } = string.Empty;
+    public string ProductName { get; set; } = string.Empty;
     public decimal TotalSalesQty { get; set; }
     public decimal TotalSalesAmount { get; set; }
     public decimal PendingOrder { get; set; }
     public decimal PendingProcess { get; set; }
-    public byte[]? ImgThumbData { get; set; }
-}
-
-public class DesignImageRow
-{
-    public int DesignId { get; set; }
-    public byte[]? ImgThumbData { get; set; }
-    public int? AccountId { get; set; }
-    public string? CustomerName { get; set; }
 }
 
 public class DesignHeaderRow
@@ -27,8 +19,12 @@ public class DesignHeaderRow
     public string? DesignName { get; set; }
     public byte[]? ImgThumbData { get; set; }
     public int? AccountId { get; set; }
-    public string? CustomerName { get; set; }
-    public string? CategoryName { get; set; }
+    public string? ProductName { get; set; }
+    public string? ProductCategory { get; set; }
+    public string? Material { get; set; }
+    public decimal? NetWeight { get; set; }
+    public string? Status { get; set; }
+    public decimal CurrentQuantity { get; set; }
 }
 
 public class DesignOrderRow
@@ -47,20 +43,12 @@ public class DesignSalesPointRow
     public decimal Value { get; set; }
 }
 
-public class DesignSalesMetaRow
-{
-    public DateTime? LastSoldDate { get; set; }
-}
-
 public class DesignProductionRow
 {
-    public decimal ProductionQuantity { get; set; }
-    public decimal CompletedQuantity { get; set; }
-    public decimal PendingQuantity { get; set; }
-    public decimal RejectedQuantity { get; set; }
     public DateTime? ProductionDate { get; set; }
-    public string? Department { get; set; }
-    public string? Supervisor { get; set; }
+    public string? Location { get; set; }
+    public decimal ProducedQuantity { get; set; }
+    public decimal RequiredQuantity { get; set; }
 }
 
 public class DesignInventoryRow
@@ -87,10 +75,4 @@ public class AccountRow
     public string? Email { get; set; }
     public string? TelNo { get; set; }
     public string? GstNo { get; set; }
-}
-
-public class ChartRow
-{
-    public string Label { get; set; } = string.Empty;
-    public decimal Value { get; set; }
 }

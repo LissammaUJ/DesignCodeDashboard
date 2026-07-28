@@ -2,24 +2,35 @@
 
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(9, 1fr);
+  grid-template-columns: repeat(9, minmax(0, 1fr));
   gap: 0.875rem;
 
-  @media (max-width: 1600px) { grid-template-columns: repeat(5, 1fr); }
-  @media (max-width: 1200px) { grid-template-columns: repeat(3, 1fr); }
-  @media (max-width: 768px) { grid-template-columns: repeat(2, 1fr); }
-  @media (max-width: 480px) { grid-template-columns: 1fr; }
+  @media (max-width: 1600px) {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  @media (max-width: 1200px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  @media (max-width: 768px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (max-width: 480px) {
+    grid-template-columns: 1fr;
+  }
 }
 
 .kpi-card {
-  border-radius: 14px;
-  padding: 0.75rem 0.875rem 0.625rem;
+  border-radius: 16px;
+  padding: 1rem 1rem 0.875rem;
   color: $white;
-  box-shadow: $card-shadow;
-  transition: transform 250ms cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12);
+  transition: transform $transition-base, box-shadow $transition-base;
   cursor: default;
-  min-height: 96px;
+  min-height: 110px;
+  height: 100%;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -31,13 +42,13 @@
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), transparent 55%);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.18), transparent 50%);
     pointer-events: none;
   }
 
   &:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+    transform: translateY(-3px);
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.2);
   }
 
   &:focus-visible {
@@ -46,46 +57,43 @@
   }
 
   &--skeleton {
-    background: $white;
+    background: transparent;
     padding: 0;
-    min-height: auto;
+    min-height: 110px;
+    box-shadow: none;
 
-    &::after { display: none; }
+    &::after {
+      display: none;
+    }
+
+    &:hover {
+      transform: none;
+      box-shadow: none;
+    }
   }
 
   &__top {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.5rem;
     position: relative;
     z-index: 1;
   }
 
   &__icon {
-    width: 30px;
-    height: 30px;
-    border-radius: 8px;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
     background: rgba(255, 255, 255, 0.22);
     display: flex;
     align-items: center;
     justify-content: center;
     backdrop-filter: blur(4px);
 
-    i { font-size: 0.875rem; }
-  }
-
-  &__growth {
-    display: flex;
-    align-items: center;
-    gap: 0.2rem;
-    font-size: 0.6875rem;
-    font-weight: 600;
-    background: rgba(255, 255, 255, 0.22);
-    padding: 0.15rem 0.45rem;
-    border-radius: 999px;
-
-    &--down { background: rgba(0, 0, 0, 0.18); }
+    i {
+      font-size: 1rem;
+    }
   }
 
   &__value {
@@ -96,22 +104,17 @@
     position: relative;
     z-index: 1;
     animation: erp-count-in 0.45s ease both;
+    word-break: break-word;
   }
 
   &__label {
-    font-size: 0.6875rem;
-    font-weight: 500;
-    opacity: 0.92;
-    margin-top: 0.1rem;
-    margin-bottom: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    opacity: 0.94;
+    margin-top: 0.35rem;
     position: relative;
     z-index: 1;
-  }
-
-  ::ng-deep .sparkline {
-    height: 24px;
-    position: relative;
-    z-index: 1;
-    opacity: 0.9;
+    line-height: 1.25;
+    letter-spacing: 0.01em;
   }
 }

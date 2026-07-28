@@ -16,9 +16,6 @@ export class CustomerSalesApiService {
       .set('startDate', toIsoDate(filter.startDate))
       .set('endDate', toIsoDate(filter.endDate));
 
-    const url = `${this.baseUrl}?${params.toString()}`;
-    console.info('[CustomerSalesApiService] API Request URL', url);
-
     return this.http
       .get<CustomerSalesDto[]>(this.baseUrl, { params })
       .pipe(catchError(handleApiError));

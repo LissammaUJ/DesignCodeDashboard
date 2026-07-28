@@ -13,14 +13,6 @@ public sealed class DashboardService(IDashboardRepository repository) : IDashboa
         return repository.GetSummaryAsync(filter, cancellationToken);
     }
 
-    public Task<DashboardChartsDto> GetChartsAsync(
-        DesignFilterRequest filter,
-        CancellationToken cancellationToken = default)
-    {
-        ValidateFilter(filter);
-        return repository.GetChartsAsync(filter, cancellationToken);
-    }
-
     private static void ValidateFilter(DesignFilterRequest filter)
     {
         if (filter.CustomerAccountId <= 0)

@@ -5,14 +5,6 @@ namespace DesignDashboard.Api.Services;
 
 public sealed class DesignService(IDesignRepository repository) : IDesignService
 {
-    public Task<IReadOnlyList<DesignListItemDto>> GetDesignsAsync(
-        DesignFilterRequest filter,
-        CancellationToken cancellationToken = default)
-    {
-        ValidateFilter(filter);
-        return repository.GetDesignsAsync(filter, cancellationToken);
-    }
-
     public Task<DesignDetailDto?> GetDesignByIdAsync(
         int designId,
         int? customerAccountId,
@@ -40,13 +32,22 @@ public sealed class DesignService(IDesignRepository repository) : IDesignService
         return repository.GetDesignByIdAsync(designId, filter, cancellationToken);
     }
 
-    public Task<DesignProductionDto> GetProductionByDesignIdAsync(
+    public Task<IReadOnlyList<DesignProductionDto>> GetProductionByDesignIdAsync(
         int designId,
         CancellationToken cancellationToken = default)
     {
         if (designId <= 0)
         {
-            return Task.FromResult(DesignProductionDto.Empty);
+            return Task.FromResult<IReadOnlyList<DesignProductionDto>>(
+            [
+                new DesignProductionDto
+                {
+                    ProductionDate = null,
+                    Location = "-",
+                    ProducedQuantity = 0,
+                    RequiredQuantity = 0
+                }
+            ]);
         }
 
         return repository.GetProductionByDesignIdAsync(designId, cancellationToken);
