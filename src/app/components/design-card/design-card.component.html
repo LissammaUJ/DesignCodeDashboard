@@ -6,7 +6,7 @@
   (keydown.space)="$event.preventDefault(); onCardClick()"
   tabindex="0"
   role="button"
-  [attr.aria-label]="'View details for ' + design().designCode + ' — ' + design().designName"
+  [attr.aria-label]="'View details for ' + design().designCode + ' — ' + (design().productName || design().designName)"
 >
   <p-card styleClass="design-card">
     <ng-template #header>
@@ -34,36 +34,36 @@
       </div>
     </ng-template>
 
-    <div class="design-card__identity">
-      <h3 class="design-card__code">{{ design().designCode }}</h3>
-      <p class="design-card__name" [pTooltip]="design().designName" tooltipPosition="top">
-        {{ design().designName }}
-      </p>
-      <p class="design-card__customer">
-        <i class="pi pi-building" aria-hidden="true"></i>
-        <span [pTooltip]="design().customerAccount" tooltipPosition="top">{{ design().customerAccount }}</span>
-      </p>
-    </div>
-
-    <div class="design-card__kpis" role="group" aria-label="Business KPIs">
-      @for (kpi of kpiItems(); track kpi.label) {
-        <div
-          class="kpi-tile"
-          [class]="kpi.colorClass"
-          [pTooltip]="kpi.tooltip"
+    <div class="design-card__content">
+      <header class="design-card__header">
+        <h3 class="design-card__code">{{ design().designCode }}</h3>
+        <p
+          class="design-card__product"
+          [pTooltip]="design().productName || 'No Data Available'"
           tooltipPosition="top"
-          [attr.aria-label]="kpi.tooltip"
         >
-          <div class="kpi-tile__head">
-            <i class="kpi-tile__icon" [class]="kpi.icon" aria-hidden="true"></i>
-            <span class="kpi-tile__label">{{ kpi.label }}</span>
-          </div>
-          <strong class="kpi-tile__value">{{ kpi.value }}</strong>
-        </div>
-      }
-    </div>
+          {{ design().productName || 'No Data Available' }}
+        </p>
+      </header>
 
-    <ng-template #footer>
+      <div class="design-card__kpis" role="group" aria-label="Business KPIs">
+        @for (kpi of kpiItems(); track kpi.label) {
+          <div
+            class="kpi-tile"
+            [class]="kpi.colorClass"
+            [pTooltip]="kpi.tooltip"
+            tooltipPosition="top"
+            [attr.aria-label]="kpi.tooltip"
+          >
+            <div class="kpi-tile__top">
+              <i class="kpi-tile__icon" [class]="kpi.icon" aria-hidden="true"></i>
+              <span class="kpi-tile__label">{{ kpi.label }}</span>
+            </div>
+            <strong class="kpi-tile__value">{{ kpi.value }}</strong>
+          </div>
+        }
+      </div>
+
       <div class="design-card__footer">
         <p-button
           label="View Details"
@@ -74,6 +74,6 @@
           (onClick)="onViewDetails($event)"
         />
       </div>
-    </ng-template>
+    </div>
   </p-card>
 </article>

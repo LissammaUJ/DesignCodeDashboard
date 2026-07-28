@@ -28,48 +28,36 @@ public sealed class DesignRepository(
 
             var designIds = sales.Select(s => s.DesignId).Distinct().ToArray();
 
-            // Images are best-effort: never fail the whole designs list if ImgThumbData load fails.
-            IReadOnlyList<DesignImageRow> imageRows = [];
             string? customerName = null;
             try
             {
-                var imagesTask = GetDesignImagesAsync(designIds, cancellationToken);
-                var customerNameTask = GetAccountNameAsync(filter.CustomerAccountId, cancellationToken);
-                await Task.WhenAll(imagesTask, customerNameTask);
-                imageRows = await imagesTask;
-                customerName = await customerNameTask;
+                customerName = await GetAccountNameAsync(filter.CustomerAccountId, cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)
             {
-                logger.LogWarning(ex, "Design image/account enrichment failed; returning sales rows without thumbnails");
-                customerName ??= await GetAccountNameAsync(filter.CustomerAccountId, cancellationToken);
+                logger.LogWarning(ex, "Design account enrichment failed; returning sales rows without customer name");
             }
 
-            var imageLookup = imageRows
-                .GroupBy(x => x.DesignId)
-                .ToDictionary(g => g.Key, g => g.First());
+            var productNames = await GetProductNamesAsync(designIds, cancellationToken);
+            var thumbs = await DesignThumbnailLoader.LoadDataUrlsAsync(
+                connectionFactory, designIds, logger, cancellationToken);
 
             logger.LogInformation(
-                "Design sales SQL returned {Count} rows for AccountId={AccountId}",
-                sales.Count, filter.CustomerAccountId);
+                "Design sales SQL returned {Count} rows for AccountId={AccountId} ({WithImages} thumbnails)",
+                sales.Count, filter.CustomerAccountId, thumbs.Count);
 
-            return [.. sales.Select(s =>
+            return [.. sales.Select(s => new DesignListItemDto
             {
-                imageLookup.TryGetValue(s.DesignId, out var imageRow);
-                return new DesignListItemDto
-                {
-                    DesignId = s.DesignId,
-                    DesignCode = s.DesignCode?.Trim() ?? string.Empty,
-                    DesignName = s.DesignName?.Trim() ?? string.Empty,
-                    CustomerName = customerName
-                        ?? imageRow?.CustomerName?.Trim()
-                        ?? string.Empty,
-                    ImageThumbnail = ImageHelper.ToBase64DataUrl(imageRow?.ImgThumbData),
-                    SalesQty = s.TotalSalesQty,
-                    SalesValue = s.TotalSalesAmount,
-                    PendingOrders = s.PendingOrder,
-                    PendingProcess = s.PendingProcess
-                };
+                DesignId = s.DesignId,
+                DesignCode = s.DesignCode?.Trim() ?? string.Empty,
+                DesignName = s.DesignName?.Trim() ?? string.Empty,
+                ProductName = productNames.GetValueOrDefault(s.DesignId, string.Empty),
+                CustomerName = customerName ?? string.Empty,
+                ImageThumbnail = thumbs.GetValueOrDefault(s.DesignId),
+                SalesQty = s.TotalSalesQty,
+                SalesValue = s.TotalSalesAmount,
+                PendingOrders = s.PendingOrder,
+                PendingProcess = s.PendingProcess
             })];
         }
         catch (Exception ex)
@@ -226,36 +214,6 @@ public sealed class DesignRepository(
         return [.. rows];
     }
 
-    private async Task<IReadOnlyList<DesignImageRow>> GetDesignImagesAsync(
-        int[] designIds,
-        CancellationToken cancellationToken)
-    {
-        if (designIds.Length == 0)
-        {
-            return [];
-        }
-
-        const string sql = """
-            SELECT
-                d.DesignId,
-                d.ImgThumbData,
-                CAST(d.AccountId AS INT) AS AccountId,
-                a.AccountName AS CustomerName
-            FROM ItemDesign d
-            LEFT JOIN Account a ON a.AccountId = d.AccountId
-            WHERE d.DesignId IN @DesignIds;
-            """;
-
-        using var connection = connectionFactory.CreateConnection();
-        var rows = await connection.QueryAsync<DesignImageRow>(
-            new CommandDefinition(
-                sql,
-                new { DesignIds = designIds },
-                cancellationToken: cancellationToken,
-                commandTimeout: 120));
-        return [.. rows];
-    }
-
     private async Task<string?> GetAccountNameAsync(int accountId, CancellationToken cancellationToken)
     {
         const string sql = """
@@ -267,6 +225,40 @@ public sealed class DesignRepository(
         using var connection = connectionFactory.CreateConnection();
         return await connection.QuerySingleOrDefaultAsync<string>(
             new CommandDefinition(sql, new { AccountId = accountId }, cancellationToken: cancellationToken));
+    }
+
+    private async Task<Dictionary<int, string>> GetProductNamesAsync(
+        int[] designIds,
+        CancellationToken cancellationToken)
+    {
+        if (designIds.Length == 0)
+        {
+            return new Dictionary<int, string>();
+        }
+
+        const string sql = """
+            SELECT DesignId, ProductName
+            FROM (
+                SELECT
+                      DesignId,
+                      ProductName,
+                      ROW_NUMBER() OVER (
+                          PARTITION BY DesignId
+                          ORDER BY CASE WHEN Active = 1 THEN 0 ELSE 1 END, ProductName
+                      ) AS rn
+                FROM Product
+                WHERE DesignId IN @DesignIds
+            ) x
+            WHERE rn = 1;
+            """;
+
+        using var connection = connectionFactory.CreateConnection();
+        var rows = await connection.QueryAsync<(int DesignId, string? ProductName)>(
+            new CommandDefinition(sql, new { DesignIds = designIds }, cancellationToken: cancellationToken));
+
+        return rows.ToDictionary(
+            x => x.DesignId,
+            x => x.ProductName?.Trim() ?? string.Empty);
     }
 
     private static async Task<IReadOnlyList<ProductDetailDto>> QueryProductsAsync(

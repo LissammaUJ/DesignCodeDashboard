@@ -44,11 +44,11 @@ export class DesignCardComponent {
         tooltip: `Pending Orders: ${this.fmtNum(d.pendingOrderQuantity)}`,
       },
       {
-        label: 'In Processing',
+        label: 'In Process',
         value: this.fmtNum(d.inProcessingQuantity),
         icon: 'pi pi-cog',
         colorClass: 'kpi-tile--green',
-        tooltip: `In Processing Quantity: ${this.fmtNum(d.inProcessingQuantity)}`,
+        tooltip: `In Process Quantity: ${this.fmtNum(d.inProcessingQuantity)}`,
       },
     ];
   });

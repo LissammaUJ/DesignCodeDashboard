@@ -213,6 +213,17 @@
     letter-spacing: 0.04em;
   }
 
+  &__prod-ready {
+    margin: 0;
+    padding: 1.25rem 1rem;
+    border: 1px dashed $gray-300;
+    border-radius: 10px;
+    background: $gray-50;
+    color: $gray-600;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
   &__summary-row {
     display: grid;
     grid-template-columns: repeat(3, 1fr);

@@ -13,16 +13,12 @@ import { TooltipModule } from 'primeng/tooltip';
 import { ToastModule } from 'primeng/toast';
 import { SkeletonModule } from 'primeng/skeleton';
 import { MessageService } from 'primeng/api';
-import {
-  DesignDetail,
-  DesignFilter,
-  DesignInventoryInfo,
-  DesignProductionInfo,
-} from '../../core/models/design.models';
+import { DesignDetail, DesignFilter } from '../../core/models/design.models';
 import { DesignApiService } from '../../services/design-api.service';
 import { DesignTabsApiService } from '../../services/design-tabs-api.service';
 import { mapDesignDetail } from '../../shared/design-api.mapper';
-import { forkJoin } from 'rxjs';
+import { forkJoin, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 
 @Component({
   selector: 'app-design-detail-dialog',
@@ -66,9 +62,6 @@ export class DesignDetailDialogComponent implements OnInit {
   readonly zoomed = signal(false);
   readonly orderSearch = signal('');
 
-  /** True after production + inventory tab APIs resolve. */
-  readonly hasProductionData = signal(false);
-
   readonly barOpts = {
     responsive: true,
     maintainAspectRatio: false,
@@ -96,30 +89,19 @@ export class DesignDetailDialogComponent implements OnInit {
 
     forkJoin({
       detail: this.designApi.getDesignById(designID, apiFilter),
-      production: this.designTabsApi.getProduction(designID),
-      inventory: this.designTabsApi.getInventory(designID),
+      inventory: this.designTabsApi.getInventory(designID).pipe(
+        catchError(() => of({ currentStock: 0 }))
+      ),
     }).subscribe({
-      next: ({ detail, production, inventory }) => {
+      next: ({ detail, inventory }) => {
         const mapped = mapDesignDetail(detail);
-        const productionInfo: DesignProductionInfo = {
-          productionQuantity: Number(production.productionQuantity) || 0,
-          completedQuantity: Number(production.completedQuantity) || 0,
-          pendingQuantity: Number(production.pendingQuantity) || 0,
-          rejectedQuantity: Number(production.rejectedQuantity) || 0,
-          productionDate: this.formatProductionDate(production.productionDate),
-          department: production.department?.trim() ?? '',
-          supervisor: production.supervisor?.trim() ?? '',
-        };
-        const inventoryInfo: DesignInventoryInfo = {
-          currentStock: Number(inventory.currentStock) || 0,
-        };
-
+        const currentQuantity = Number(inventory.currentStock) || 0;
         this.detail.set({
           ...mapped,
-          production: productionInfo,
-          inventory: inventoryInfo,
+          general: { ...mapped.general, currentQuantity },
+          inventory: { currentStock: currentQuantity },
+          currentStock: currentQuantity,
         });
-        this.hasProductionData.set(true);
         this.loading.set(false);
       },
       error: (err) => {
@@ -136,17 +118,6 @@ export class DesignDetailDialogComponent implements OnInit {
 
   close(): void {
     this.ref.close();
-  }
-
-  private formatProductionDate(value: string | null | undefined): string {
-    if (value == null || value === '') return '';
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return String(value);
-    return d.toLocaleDateString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
   }
 
   prevImage(): void {

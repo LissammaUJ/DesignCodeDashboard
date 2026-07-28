@@ -1,12 +1,16 @@
+using System.Diagnostics;
 using DesignDashboard.Api.DTOs;
 using DesignDashboard.Api.Helpers;
 using DesignDashboard.Api.Interfaces;
 using DesignDashboard.Api.Models;
 using Dapper;
+using Microsoft.Extensions.Logging;
 
 namespace DesignDashboard.Api.Repositories;
 
-public sealed class DashboardRepository(ISqlConnectionFactory connectionFactory) : IDashboardRepository
+public sealed class DashboardRepository(
+    ISqlConnectionFactory connectionFactory,
+    ILogger<DashboardRepository> logger) : IDashboardRepository
 {
     public async Task<DashboardSummaryDto> GetSummaryAsync(
         DesignFilterRequest filter,
@@ -17,12 +21,14 @@ public sealed class DashboardRepository(ISqlConnectionFactory connectionFactory)
         return new DashboardSummaryDto
         {
             TotalDesigns = sales.Select(s => s.DesignId).Distinct().Count(),
+            TotalOrderQty = sales.Sum(s => s.TotalOrderQty),
+            TotalOrderSalesValue = sales.Sum(s => s.TotalOrderAmount),
             TotalSalesQty = sales.Sum(s => s.TotalSalesQty),
             TotalSalesValue = sales.Sum(s => s.TotalSalesAmount),
+            PendingOrderValue = sales.Sum(s => s.PendingOrderValue),
             PendingOrders = sales.Sum(s => s.PendingOrder),
-            PendingOrderValue = 0,
             InProcessing = sales.Sum(s => s.PendingProcess),
-            CompletedOrders = sales.Sum(s => s.TotalSalesQty)
+            CompletedOrders = sales.Sum(s => s.CompletedOrderQty)
         };
     }
 
@@ -51,72 +57,17 @@ public sealed class DashboardRepository(ISqlConnectionFactory connectionFactory)
 
     /// <summary>
     /// Dashboard Summary sales query (CarolERP) — one row per Design.
-    /// PendingOrder / PendingProcess are summed across distinct BoSl for that design.
+    /// Order / pending / completed metrics use distinct BoSl for that design.
     /// Parameters only: @AccountId, @StartDate, @EndDate.
     /// </summary>
     private const string DashboardSummarySalesSql = """
-        SELECT
-              sales.DesignId,
-              sales.DesignCode,
-              sales.DesignName,
-              sales.TotalSalesQty,
-              sales.TotalSalesAmount,
-              sales.PendingOrder,
-              sales.PendingProcess,
-              d.ImgThumbData
-        FROM (
+        WITH DesignSales AS (
             SELECT
                   d.DesignId,
                   d.DesignCode,
                   d.DesignName,
                   SUM(bet.Quantity) AS TotalSalesQty,
-                  SUM(bet.Amount * bm.ExchRate) AS TotalSalesAmount,
-                  ISNULL((
-                      SELECT SUM(ord.Quantity + ord.AddlQty - ord.FiledQty)
-                      FROM (
-                          SELECT
-                                bo2.BoSl,
-                                MAX(bo2.Quantity) AS Quantity,
-                                MAX(bo2.AddlQty) AS AddlQty,
-                                MAX(bo2.FiledQty) AS FiledQty
-                          FROM Bill_mas bm2
-                          INNER JOIN Bill_Exp_trn bet2
-                                  ON bm2.BillId = bet2.BillId
-                          INNER JOIN Bo_trn bo2
-                                  ON bet2.BoSl = bo2.BoSl
-                          INNER JOIN Product p2
-                                  ON bo2.ProductId = p2.ProductId
-                          WHERE p2.DesignId = d.DesignId
-                            AND bm2.AccountId = @AccountId
-                            AND bm2.BillDate BETWEEN @StartDate AND @EndDate
-                          GROUP BY bo2.BoSl
-                      ) ord
-                  ), 0) AS PendingOrder,
-                  ISNULL((
-                      SELECT SUM(ord.PendingProcess)
-                      FROM (
-                          SELECT
-                                bo2.BoSl,
-                                ISNULL((
-                                    SELECT SUM(Po_trn.Quantity - LandedQty - ProducedQty)
-                                    FROM Po_trn
-                                    INNER JOIN Pi_trn
-                                           ON Po_trn.PiSl = Pi_trn.PiSl
-                                    WHERE Pi_trn.BoSl = bo2.BoSl
-                                ), 0) AS PendingProcess
-                          FROM Bill_mas bm2
-                          INNER JOIN Bill_Exp_trn bet2
-                                  ON bm2.BillId = bet2.BillId
-                          INNER JOIN Bo_trn bo2
-                                  ON bet2.BoSl = bo2.BoSl
-                          INNER JOIN Product p2
-                                  ON bo2.ProductId = p2.ProductId
-                          WHERE p2.DesignId = d.DesignId
-                            AND bm2.AccountId = @AccountId
-                            AND bm2.BillDate BETWEEN @StartDate AND @EndDate
-                          GROUP BY bo2.BoSl
-                      ) ord
-                  ), 0) AS PendingProcess
+                  SUM(bet.Amount * bm.ExchRate) AS TotalSalesAmount
             FROM Bill_mas bm
             INNER JOIN Bill_Exp_trn bet
                     ON bm.BillId = bet.BillId
@@ -132,18 +83,88 @@ public sealed class DashboardRepository(ISqlConnectionFactory connectionFactory)
                   d.DesignId,
                   d.DesignCode,
                   d.DesignName
-        ) sales
-        INNER JOIN ItemDesign d
-                ON d.DesignId = sales.DesignId
-        ORDER BY sales.DesignCode;
+        ),
+        DesignBoSl AS (
+            SELECT
+                  p2.DesignId,
+                  bo2.BoSl,
+                  MAX(bo2.Quantity) AS Quantity,
+                  MAX(bo2.AddlQty) AS AddlQty,
+                  MAX(bo2.FiledQty) AS FiledQty,
+                  MAX(bo2.Amount) AS Amount,
+                  MAX(bo2.Rate) AS Rate
+            FROM Bill_mas bm2
+            INNER JOIN Bill_Exp_trn bet2
+                    ON bm2.BillId = bet2.BillId
+            INNER JOIN Bo_trn bo2
+                    ON bet2.BoSl = bo2.BoSl
+            INNER JOIN Product p2
+                    ON bo2.ProductId = p2.ProductId
+            WHERE bm2.AccountId = @AccountId
+              AND bm2.BillDate BETWEEN @StartDate AND @EndDate
+              AND p2.DesignId IN (SELECT DesignId FROM DesignSales)
+            GROUP BY
+                  p2.DesignId,
+                  bo2.BoSl
+        ),
+        DesignOrderAgg AS (
+            SELECT
+                  DesignId,
+                  SUM(Quantity) AS TotalOrderQty,
+                  SUM(Amount) AS TotalOrderAmount,
+                  SUM(Quantity + AddlQty - FiledQty) AS PendingOrder,
+                  SUM((Quantity + AddlQty - FiledQty) * Rate) AS PendingOrderValue,
+                  SUM(FiledQty) AS CompletedOrderQty
+            FROM DesignBoSl
+            GROUP BY DesignId
+        ),
+        DesignBoSlProcess AS (
+            SELECT
+                  b.DesignId,
+                  b.BoSl,
+                  ISNULL((
+                      SELECT SUM(Po_trn.Quantity - LandedQty - ProducedQty)
+                      FROM Po_trn
+                      INNER JOIN Pi_trn
+                             ON Po_trn.PiSl = Pi_trn.PiSl
+                      WHERE Pi_trn.BoSl = b.BoSl
+                  ), 0) AS PendingProcess
+            FROM DesignBoSl b
+        ),
+        DesignProcess AS (
+            SELECT
+                  DesignId,
+                  SUM(PendingProcess) AS PendingProcess
+            FROM DesignBoSlProcess
+            GROUP BY DesignId
+        )
+        SELECT
+              s.DesignId,
+              s.DesignCode,
+              s.DesignName,
+              s.TotalSalesQty,
+              s.TotalSalesAmount,
+              ISNULL(o.PendingOrder, 0) AS PendingOrder,
+              ISNULL(p.PendingProcess, 0) AS PendingProcess,
+              ISNULL(o.TotalOrderQty, 0) AS TotalOrderQty,
+              ISNULL(o.TotalOrderAmount, 0) AS TotalOrderAmount,
+              ISNULL(o.PendingOrderValue, 0) AS PendingOrderValue,
+              ISNULL(o.CompletedOrderQty, 0) AS CompletedOrderQty
+        FROM DesignSales s
+        LEFT JOIN DesignOrderAgg o
+               ON o.DesignId = s.DesignId
+        LEFT JOIN DesignProcess p
+               ON p.DesignId = s.DesignId
+        ORDER BY s.DesignCode;
         """;
 
-    private async Task<IReadOnlyList<CustomerSalesResult>> ExecuteCustomerwiseSalesAsync(
+    private async Task<IReadOnlyList<DashboardSummarySalesRow>> ExecuteCustomerwiseSalesAsync(
         DesignFilterRequest filter,
         CancellationToken cancellationToken)
     {
+        var sw = Stopwatch.StartNew();
         using var connection = connectionFactory.CreateConnection();
-        var rows = await connection.QueryAsync<CustomerSalesResult>(
+        var rows = await connection.QueryAsync<DashboardSummarySalesRow>(
             new CommandDefinition(
                 DashboardSummarySalesSql,
                 new
@@ -152,9 +173,18 @@ public sealed class DashboardRepository(ISqlConnectionFactory connectionFactory)
                     StartDate = DateHelper.StartOfDay(filter.StartDate),
                     EndDate = DateHelper.EndOfDay(filter.EndDate)
                 },
-                cancellationToken: cancellationToken));
+                cancellationToken: cancellationToken,
+                commandTimeout: 120));
 
-        return [.. rows];
+        sw.Stop();
+        var list = rows.AsList();
+        logger.LogInformation(
+            "DashboardSummarySalesSql returned {Count} rows in {ElapsedMs}ms for AccountId={AccountId}",
+            list.Count,
+            sw.ElapsedMilliseconds,
+            filter.CustomerAccountId);
+
+        return list;
     }
 
     private async Task<IReadOnlyList<ChartDataPointDto>> GetSalesTrendAsync(
@@ -184,7 +214,7 @@ public sealed class DashboardRepository(ISqlConnectionFactory connectionFactory)
 
         return [.. rows.Select(r => new ChartDataPointDto
         {
-            Label = r.Label,
+            Label = r.Label?.Trim() ?? string.Empty,
             Value = r.Value
         })];
     }
@@ -256,4 +286,20 @@ public sealed class DashboardRepository(ISqlConnectionFactory connectionFactory)
             Value = r.Value
         })];
     }
+
+    private sealed class DashboardSummarySalesRow
+    {
+        public int DesignId { get; set; }
+        public string DesignCode { get; set; } = string.Empty;
+        public string DesignName { get; set; } = string.Empty;
+        public decimal TotalSalesQty { get; set; }
+        public decimal TotalSalesAmount { get; set; }
+        public decimal PendingOrder { get; set; }
+        public decimal PendingProcess { get; set; }
+        public decimal TotalOrderQty { get; set; }
+        public decimal TotalOrderAmount { get; set; }
+        public decimal PendingOrderValue { get; set; }
+        public decimal CompletedOrderQty { get; set; }
+    }
+
 }

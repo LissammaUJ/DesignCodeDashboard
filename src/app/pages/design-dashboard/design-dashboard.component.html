@@ -22,22 +22,11 @@
         label="Refresh"
         [outlined]="true"
         severity="contrast"
-        [loading]="loading() || kpiLoading() || analyticsLoading()"
+        [loading]="loading() || kpiLoading()"
         ariaLabel="Refresh dashboard"
         pTooltip="Refresh dashboard data"
         tooltipPosition="bottom"
         (onClick)="onRefresh()"
-      />
-      <p-button
-        [icon]="showAnalytics() ? 'pi pi-eye-slash' : 'pi pi-chart-bar'"
-        [label]="showAnalytics() ? 'Hide Analytics' : 'Show Analytics'"
-        [outlined]="true"
-        severity="contrast"
-        [attr.aria-pressed]="showAnalytics()"
-        ariaLabel="Toggle analytics panel"
-        pTooltip="Toggle analytics panel"
-        tooltipPosition="bottom"
-        (onClick)="toggleAnalytics()"
       />
     </div>
   </header>
@@ -64,7 +53,7 @@
   </section>
 
   <!-- Main Layout -->
-  <div class="erp-dashboard__layout" [class.erp-dashboard__layout--full]="!showAnalytics()">
+  <div class="erp-dashboard__layout">
     <!-- Design Grid -->
     <main class="erp-dashboard__main" aria-label="Design results">
       <div class="erp-dashboard__toolbar">
@@ -148,18 +137,5 @@
         </div>
       }
     </main>
-
-    <!-- Analytics Sidebar -->
-    @if (showAnalytics()) {
-      <aside class="erp-dashboard__analytics" aria-label="Analytics panel">
-        <div class="erp-dashboard__analytics-header">
-          <h3><i class="pi pi-chart-pie" aria-hidden="true"></i> Analytics</h3>
-        </div>
-        <app-analytics-panel
-          [analytics]="analytics()"
-          [loading]="analyticsLoading()"
-        />
-      </aside>
-    }
   </div>
 </div>

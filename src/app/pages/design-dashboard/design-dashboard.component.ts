@@ -31,7 +31,6 @@ import { TooltipModule } from 'primeng/tooltip';
 import { MessageService } from 'primeng/api';
 import { PAGE_SIZE_OPTIONS } from '../../core/constants/design.constants';
 import {
-  DashboardAnalytics,
   DashboardKpiSummary,
   DesignFilter,
   DesignListItem,
@@ -41,7 +40,6 @@ import {
 } from '../../core/models/design.models';
 import { DesignFilterRequest } from '../../models/api.models';
 import { AdvancedFilterComponent } from '../../components/advanced-filter/advanced-filter.component';
-import { AnalyticsPanelComponent } from '../../components/analytics-panel/analytics-panel.component';
 import { DesignCardComponent } from '../../components/design-card/design-card.component';
 import { DesignDetailDialogComponent } from '../../components/design-detail-dialog/design-detail-dialog.component';
 import { KpiSummaryComponent } from '../../components/kpi-summary/kpi-summary.component';
@@ -52,7 +50,6 @@ import { DashboardApiService } from '../../services/dashboard-api.service';
 import {
   mapCustomerSalesToListItem,
   mapCustomersToOptions,
-  mapDashboardCharts,
   mapDashboardSummary,
   paginateDesignListItems,
   sortDesignListItems,
@@ -99,7 +96,6 @@ function dateRangeValidator(): ValidatorFn {
     KpiSummaryComponent,
     AdvancedFilterComponent,
     DesignCardComponent,
-    AnalyticsPanelComponent,
   ],
   providers: [DialogService, MessageService],
   templateUrl: './design-dashboard.component.html',
@@ -133,7 +129,6 @@ export class DesignDashboardComponent implements OnInit {
   readonly pageSizeOptions = PAGE_SIZE_OPTIONS.map((v) => ({ label: String(v), value: v }));
 
   readonly kpiSummary = signal<DashboardKpiSummary | null>(null);
-  readonly analytics = signal<DashboardAnalytics | null>(null);
   readonly designs = signal<DesignListItem[]>([]);
   readonly totalRecords = signal(0);
   readonly loading = signal(false);
@@ -144,10 +139,8 @@ export class DesignDashboardComponent implements OnInit {
   /** True until GET /api/customer completes (success or error). */
   readonly customersLoading = signal(true);
   readonly kpiLoading = signal(false);
-  readonly analyticsLoading = signal(false);
   readonly loadingMore = signal(false);
   readonly filterCollapsed = signal(false);
-  readonly showAnalytics = signal(true);
   readonly currentDateTime = signal(this.formatDateTime(new Date()));
 
   readonly currentPage = signal(1);
@@ -218,7 +211,6 @@ export class DesignDashboardComponent implements OnInit {
     this.hasSearched.set(true);
     this.designsError.set(null);
     this.fetchKpis(request);
-    this.fetchAnalytics(request);
     this.fetchDesigns(request);
   }
 
@@ -259,7 +251,6 @@ export class DesignDashboardComponent implements OnInit {
     this.hasSearched.set(false);
     this.designsError.set(null);
     this.kpiSummary.set(null);
-    this.analytics.set(null);
     this.loadCustomers();
     this.messageService.add({ severity: 'secondary', summary: 'Reset', detail: 'Filters cleared.' });
   }
@@ -303,10 +294,6 @@ export class DesignDashboardComponent implements OnInit {
     if (event.action === 'View Details') {
       this.onCardClick(event.design);
     }
-  }
-
-  toggleAnalytics(): void {
-    this.showAnalytics.update((v) => !v);
   }
 
   toggleFilterCollapse(): void {
@@ -388,7 +375,6 @@ export class DesignDashboardComponent implements OnInit {
     }
 
     this.fetchKpis(request);
-    this.fetchAnalytics(request);
     this.fetchDesigns(request);
   }
 
@@ -405,24 +391,6 @@ export class DesignDashboardComponent implements OnInit {
           severity: 'error',
           summary: 'KPI summary',
           detail: err?.message ?? 'Failed to load dashboard summary.',
-        });
-      },
-    });
-  }
-
-  private fetchAnalytics(filter: DesignFilterRequest): void {
-    this.analyticsLoading.set(true);
-    this.dashboardApi.getCharts(filter).subscribe({
-      next: (dto) => {
-        this.analytics.set(mapDashboardCharts(dto));
-        this.analyticsLoading.set(false);
-      },
-      error: (err) => {
-        this.analyticsLoading.set(false);
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Analytics',
-          detail: err?.message ?? 'Failed to load dashboard charts.',
         });
       },
     });

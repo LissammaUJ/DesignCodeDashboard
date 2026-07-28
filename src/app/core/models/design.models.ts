@@ -33,6 +33,7 @@ export interface DesignListItem {
   designID: number;
   designCode: string;
   designName: string;
+  productName: string;
   customerAccount: string;
   category: string;
   subCategory: string;
@@ -86,29 +87,17 @@ export interface PaginatedResponse<T> {
 }
 
 export interface DesignGeneralInfo {
-  designCode: string;
-  designName: string;
-  designID: number;
-  barcode: string;
-  customer: string;
-  designer: string;
+  productName: string;
   category: string;
-  subCategory: string;
   material: string;
-  purity: string;
-  grossWeight: number;
   netWeight: number;
-  stoneWeight: number;
-  makingCharge: number;
   status: ApprovalStatus;
-  createdDate: string;
-  modifiedDate: string;
+  currentQuantity: number;
 }
 
 export interface DesignSalesInfo {
   totalSalesQuantity: number;
   totalSalesValue: number;
-  averageSellingPrice: number;
   lastSoldDate: string;
   monthlySales: { month: string; quantity: number; value: number }[];
   yearlySales: { year: string; quantity: number; value: number }[];
@@ -142,15 +131,4 @@ export interface DesignDetail extends DesignListItem {
   orders: DesignOrderDetail[];
   production: DesignProductionInfo;
   inventory: DesignInventoryInfo;
-}
-
-export interface DashboardAnalytics {
-  salesTrend: { label: string; value: number }[];
-  topCustomers: { label: string; value: number }[];
-  topCategories: { label: string; value: number }[];
-  topMaterials: { label: string; value: number }[];
-  topDesigners: { label: string; value: number }[];
-  stockMovement: { label: string; value: number }[];
-  monthlyProduction: { label: string; value: number }[];
-  pendingOrders: { label: string; value: number }[];
 }

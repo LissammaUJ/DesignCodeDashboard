@@ -14,6 +14,7 @@ export interface DesignListItemDto {
   designId: number;
   designCode: string;
   designName: string;
+  productName?: string;
   customerName: string;
   imageThumbnail: string | null;
   salesQty: number;
@@ -77,6 +78,7 @@ export interface DesignDetailDto {
   orders?: DesignOrderDto[];
   monthlySales?: DesignSalesPointDto[];
   yearlySales?: DesignSalesPointDto[];
+  inventory?: DesignInventoryDto[];
 }
 
 /** GET /api/designs/{designId}/production */
@@ -97,23 +99,14 @@ export interface DesignInventoryDto {
 
 export interface DashboardSummaryDto {
   totalDesigns: number;
+  totalOrderQty: number;
+  totalOrderSalesValue: number;
   totalSalesQty: number;
   totalSalesValue: number;
   pendingOrders: number;
   pendingOrderValue: number;
   inProcessing: number;
   completedOrders: number;
-}
-
-export interface ChartDataPointDto {
-  label: string;
-  value: number;
-}
-
-export interface DashboardChartsDto {
-  salesTrend: ChartDataPointDto[];
-  topCustomers: ChartDataPointDto[];
-  topCategories: ChartDataPointDto[];
 }
 
 export interface ApiErrorResponse {
@@ -128,6 +121,7 @@ export interface CustomerSalesDto {
   designId: number;
   designCode: string;
   designName: string;
+  productName?: string;
   totalSalesQty: number;
   totalSalesAmount: number;
   pendingOrder: number;

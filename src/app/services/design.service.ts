@@ -13,7 +13,6 @@ import {
 } from '../core/constants/design.constants';
 import {
   ApprovalStatus,
-  DashboardAnalytics,
   DashboardKpiSummary,
   DesignDetail,
   DesignFilter,
@@ -33,7 +32,6 @@ export class DesignService {
   private readonly cache = new Map<number, DesignListItem>();
   private readonly detailCache = new Map<number, DesignDetail>();
   private kpiCache: { filter: string; data: DashboardKpiSummary } | null = null;
-  private analyticsCache: { filter: string; data: DashboardAnalytics } | null = null;
 
   private readonly customers = CUSTOMER_OPTIONS.map((o) => o.label);
   private readonly branches = BRANCH_OPTIONS.map((o) => o.value);
@@ -116,31 +114,6 @@ export class DesignService {
     );
   }
 
-  getAnalytics(filter: DesignFilter): Observable<DashboardAnalytics> {
-    const key = this.serializeFilter(filter);
-    if (this.analyticsCache?.filter === key) {
-      return of(this.analyticsCache.data).pipe(delay(100));
-    }
-
-    return of(null).pipe(
-      delay(500),
-      map(() => {
-        const data: DashboardAnalytics = {
-          salesTrend: this.chartData(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'], 100, 500),
-          topCustomers: this.chartData(this.customers.slice(0, 5), 50, 200),
-          topCategories: this.chartData(this.categories, 80, 300),
-          topMaterials: this.chartData(this.materials, 60, 250),
-          topDesigners: this.chartData(this.designers.slice(0, 5), 40, 180),
-          stockMovement: this.chartData(['Week 1', 'Week 2', 'Week 3', 'Week 4'], 30, 150),
-          monthlyProduction: this.chartData(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'], 70, 280),
-          pendingOrders: this.chartData(['Urgent', 'Normal', 'Low'], 20, 100),
-        };
-        this.analyticsCache = { filter: key, data };
-        return data;
-      })
-    );
-  }
-
   getDesignDetail(designID: number): Observable<DesignDetail> {
     const internalId = this.resolveInternalId(designID);
     if (this.detailCache.has(internalId)) {
@@ -154,23 +127,12 @@ export class DesignService {
         const detail: DesignDetail = {
           ...base,
           general: {
-            designCode: base.designCode,
-            designName: base.designName,
-            designID: base.designID,
-            barcode: `BAR${base.designID}${base.designCode.replace(/-/g, '')}`,
-            customer: base.customerAccount,
-            designer: base.designer,
+            productName: base.productName || base.designName,
             category: base.category,
-            subCategory: base.subCategory,
             material: base.material,
-            purity: base.purity,
-            grossWeight: base.grossWeight,
             netWeight: base.netWeight,
-            stoneWeight: base.stoneWeight,
-            makingCharge: base.makingCharge,
             status: base.approvalStatus,
-            createdDate: base.createdDate,
-            modifiedDate: base.createdDate,
+            currentQuantity: base.currentStock,
           },
           sales: this.buildSalesInfo(base),
           orders: this.buildOrderDetails(designID),
@@ -197,7 +159,6 @@ export class DesignService {
     this.cache.clear();
     this.detailCache.clear();
     this.kpiCache = null;
-    this.analyticsCache = null;
   }
 
   private findMatchingIds(filter: DesignFilter): number[] {
@@ -261,6 +222,7 @@ export class DesignService {
       designID: 10000 + id,
       designCode: `DC-${String(10000 + id).padStart(5, '0')}`,
       designName: `${category} Design ${id}`,
+      productName: `${category} Product ${id}`,
       customerAccount: this.customers[seed % this.customers.length],
       category,
       subCategory: this.subCategories[seed % this.subCategories.length],
@@ -303,7 +265,6 @@ export class DesignService {
     return {
       totalSalesQuantity: base.salesQuantity,
       totalSalesValue: base.totalSalesValue,
-      averageSellingPrice: base.makingCharge * 1.5,
       lastSoldDate: base.createdDate,
       monthlySales: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'].map((m, i) => ({
         month: m,
@@ -374,10 +335,6 @@ export class DesignService {
 
   private sparkline(points: number, min: number, max: number): number[] {
     return Array.from({ length: points }, (_, i) => Math.floor(min + Math.random() * (max - min) + i * 3));
-  }
-
-  private chartData(labels: string[], min: number, max: number) {
-    return labels.map((label) => ({ label, value: Math.floor(min + Math.random() * (max - min)) }));
   }
 
   private formatDate(d: Date): string {

@@ -6,6 +6,11 @@ namespace DesignDashboard.Api.Helpers;
 /// </summary>
 public static class CustomerSalesSql
 {
+    /// <summary>
+    /// List/dashboard sales aggregation (metrics only).
+    /// ImgThumbData is loaded separately via <see cref="DesignThumbnailLoader"/> so the
+    /// sales join stays light and card images are still returned as imageThumbnail.
+    /// </summary>
     public const string ByAccountAndDateRange = """
         SELECT
               sales.DesignId,
@@ -14,8 +19,7 @@ public static class CustomerSalesSql
               sales.TotalSalesQty,
               sales.TotalSalesAmount,
               sales.PendingOrder,
-              sales.PendingProcess,
-              d.ImgThumbData
+              sales.PendingProcess
         FROM (
             SELECT
                   d.DesignId,
@@ -41,8 +45,6 @@ public static class CustomerSalesSql
                   d.DesignCode,
                   d.DesignName
         ) sales
-        INNER JOIN ItemDesign d
-               ON d.DesignId = sales.DesignId
         ORDER BY
               sales.DesignCode;
         """;

@@ -1,14 +1,12 @@
 import {
   CustomerDto,
   CustomerSalesDto,
-  DashboardChartsDto,
   DashboardSummaryDto,
   DesignDetailDto,
   DesignListItemDto,
   ProductDetailDto,
 } from '../models/api.models';
 import {
-  DashboardAnalytics,
   DashboardKpiSummary,
   DesignDetail,
   DesignListItem,
@@ -42,6 +40,7 @@ export function mapCustomerSalesToListItem(
     designID: dto.designId,
     designCode: dto.designCode ?? '',
     designName: dto.designName ?? '',
+    productName: dto.productName?.trim() || '',
     customerAccount,
     category: '',
     subCategory: '',
@@ -82,6 +81,7 @@ export function mapDesignListItem(dto: DesignListItemDto): DesignListItem {
     designID: dto.designId,
     designCode: dto.designCode ?? '',
     designName: dto.designName ?? '',
+    productName: dto.productName?.trim() || '',
     customerAccount: dto.customerName ?? '',
     category: '',
     subCategory: '',
@@ -133,8 +133,29 @@ export function mapDashboardSummary(dto: DashboardSummaryDto): DashboardKpiSumma
       sparkline: [] as number[],
     },
     {
+      key: 'totalOrderQty',
+      label: 'Total Order Quantity',
+      value: Number(dto.totalOrderQty) || 0,
+      growth: 0,
+      trend: 'neutral' as const,
+      icon: 'pi pi-list',
+      gradient: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
+      sparkline: [] as number[],
+    },
+    {
+      key: 'totalOrderSalesValue',
+      label: 'Total Order Sales Value',
+      value: Number(dto.totalOrderSalesValue) || 0,
+      growth: 0,
+      trend: 'neutral' as const,
+      icon: 'pi pi-money-bill',
+      gradient: 'linear-gradient(135deg, #6366f1, #4f46e5)',
+      sparkline: [] as number[],
+      format: 'currency' as const,
+    },
+    {
       key: 'totalSalesQty',
-      label: 'Total Sales Qty',
+      label: 'Total Sales Quantity',
       value: Number(dto.totalSalesQty) || 0,
       growth: 0,
       trend: 'neutral' as const,
@@ -154,16 +175,6 @@ export function mapDashboardSummary(dto: DashboardSummaryDto): DashboardKpiSumma
       format: 'currency' as const,
     },
     {
-      key: 'pendingOrders',
-      label: 'Pending Orders',
-      value: Number(dto.pendingOrders) || 0,
-      growth: 0,
-      trend: 'neutral' as const,
-      icon: 'pi pi-inbox',
-      gradient: 'linear-gradient(135deg, #d97706, #b45309)',
-      sparkline: [] as number[],
-    },
-    {
       key: 'pendingOrderValue',
       label: 'Pending Order Value',
       value: Number(dto.pendingOrderValue) || 0,
@@ -175,8 +186,18 @@ export function mapDashboardSummary(dto: DashboardSummaryDto): DashboardKpiSumma
       format: 'currency' as const,
     },
     {
+      key: 'pendingOrders',
+      label: 'Pending Quantity',
+      value: Number(dto.pendingOrders) || 0,
+      growth: 0,
+      trend: 'neutral' as const,
+      icon: 'pi pi-inbox',
+      gradient: 'linear-gradient(135deg, #d97706, #b45309)',
+      sparkline: [] as number[],
+    },
+    {
       key: 'inProcessing',
-      label: 'In Processing',
+      label: 'In Process (Quantity)',
       value: Number(dto.inProcessing) || 0,
       growth: 0,
       trend: 'neutral' as const,
@@ -186,7 +207,7 @@ export function mapDashboardSummary(dto: DashboardSummaryDto): DashboardKpiSumma
     },
     {
       key: 'completedOrders',
-      label: 'Completed Orders',
+      label: 'Completed Orders (Quantity)',
       value: Number(dto.completedOrders) || 0,
       growth: 0,
       trend: 'neutral' as const,
@@ -199,23 +220,6 @@ export function mapDashboardSummary(dto: DashboardSummaryDto): DashboardKpiSumma
   return {
     metrics,
     lastUpdated: new Date().toLocaleString('en-IN'),
-  };
-}
-
-/** Maps GET /api/dashboard/charts → existing analytics panel model. */
-export function mapDashboardCharts(dto: DashboardChartsDto): DashboardAnalytics {
-  const toPoints = (rows: { label: string; value: number }[] | undefined) =>
-    (rows ?? []).map((r) => ({ label: r.label, value: Number(r.value) || 0 }));
-
-  return {
-    salesTrend: toPoints(dto.salesTrend),
-    topCustomers: toPoints(dto.topCustomers),
-    topCategories: toPoints(dto.topCategories),
-    topMaterials: [],
-    topDesigners: [],
-    stockMovement: [],
-    monthlyProduction: [],
-    pendingOrders: [],
   };
 }
 
@@ -273,13 +277,6 @@ function firstProduct(products: ProductDetailDto[] | undefined): ProductDetailDt
   return products?.find((p) => p.active) ?? products?.[0];
 }
 
-function accountContact(dto: DesignDetailDto): string {
-  const a = dto.accountDetails;
-  if (!a) return NO_DATA;
-  const parts = [a.telNo, a.email, a.gstNo].map((x) => x?.trim()).filter(Boolean);
-  return parts.length ? parts.join(' · ') : a.accountName?.trim() || NO_DATA;
-}
-
 /**
  * Maps GET /api/design/{id} DesignDetailDto → existing DesignDetail popup model.
  * Only maps fields present on the API; missing tabs stay empty (UI shows No Data Available).
@@ -289,14 +286,17 @@ export function mapDesignDetail(dto: DesignDetailDto): DesignDetail {
   const product = firstProduct(dto.productDetails);
   const category = dto.categoryName?.trim() || NO_DATA;
   const customer = dto.customerName?.trim() || NO_DATA;
+  const productName = product?.productName?.trim() || NO_DATA;
   const netWt = product?.netWt != null ? Number(product.netWt) : null;
-  const barcode = product?.barCode?.trim() || 'Not Available';
   const material = product?.composition?.trim() || 'No Material Available';
+  const currentStock = Number(dto.inventory?.[0]?.currentStock) || 0;
+  const status = product?.active === false ? 'Inactive' as const : 'Approved' as const;
 
   const base: DesignListItem = {
     designID: dto.designId,
     designCode: dto.designCode ?? '',
     designName: dto.designName ?? '',
+    productName: productName === NO_DATA ? '' : productName,
     customerAccount: customer === NO_DATA ? '' : customer,
     category: category === NO_DATA ? '' : category,
     subCategory: '',
@@ -312,12 +312,12 @@ export function mapDesignDetail(dto: DesignDetailDto): DesignDetail {
     pendingOrderValue: 0,
     inProcessingQuantity: Number(dto.pendingProcess) || 0,
     completedOrderQuantity: 0,
-    currentStock: 0,
+    currentStock,
     availableStock: 0,
     reservedQuantity: 0,
     createdDate: '',
     designer: '',
-    approvalStatus: product?.active === false ? 'Inactive' : 'Approved',
+    approvalStatus: status,
     salesStatus: 'Active',
     imageUrl: image,
     images: image ? [image] : [],
@@ -336,28 +336,16 @@ export function mapDesignDetail(dto: DesignDetailDto): DesignDetail {
   return {
     ...base,
     general: {
-      designCode: dto.designCode || NO_DATA,
-      designName: dto.designName || NO_DATA,
-      designID: dto.designId,
-      barcode,
-      customer,
-      designer: NO_DATA,
+      productName,
       category,
-      subCategory: NO_DATA,
       material,
-      purity: NO_DATA,
-      grossWeight: 0,
       netWeight: netWt ?? 0,
-      stoneWeight: 0,
-      makingCharge: 0,
-      status: product?.active === false ? 'Inactive' : 'Approved',
-      createdDate: NO_DATA,
-      modifiedDate: accountContact(dto),
+      status,
+      currentQuantity: currentStock,
     },
     sales: {
       totalSalesQuantity: Number(dto.salesQty) || 0,
       totalSalesValue: Number(dto.salesValue) || 0,
-      averageSellingPrice: Number(dto.averageSellingPrice) || 0,
       lastSoldDate: formatDisplayDate(dto.lastSoldDate),
       monthlySales: (dto.monthlySales ?? []).map((m) => ({
         month: m.label,
@@ -371,7 +359,6 @@ export function mapDesignDetail(dto: DesignDetailDto): DesignDetail {
       })),
     },
     orders,
-    // No production / inventory fields on DesignDetailDto (loaded via tab APIs)
     production: {
       productionQuantity: 0,
       completedQuantity: 0,
@@ -382,7 +369,7 @@ export function mapDesignDetail(dto: DesignDetailDto): DesignDetail {
       supervisor: '',
     },
     inventory: {
-      currentStock: 0,
+      currentStock,
     },
   };
 }
