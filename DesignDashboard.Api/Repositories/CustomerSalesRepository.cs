@@ -1,12 +1,15 @@
+using System.Data;
 using System.Diagnostics;
 using DesignDashboard.Api.DTOs;
 using DesignDashboard.Api.Helpers;
 using DesignDashboard.Api.Interfaces;
-using DesignDashboard.Api.Models;
-using Dapper;
+using Microsoft.Data.SqlClient;
 
 namespace DesignDashboard.Api.Repositories;
 
+/// <summary>
+/// Customer design sales for Design Cards — dbo.usp_DesignDashboard only.
+/// </summary>
 public sealed class CustomerSalesRepository(
     ISqlConnectionFactory connectionFactory,
     ILogger<CustomerSalesRepository> logger) : ICustomerSalesRepository
@@ -20,7 +23,9 @@ public sealed class CustomerSalesRepository(
         var endDate = DateHelper.EndOfDay(filter.EndDate);
 
         logger.LogInformation(
-            "Executing customer sales SQL for AccountId={AccountId}, StartDate={StartDate}, EndDate={EndDate}",
+            "Executing {Proc} Action={Action} for AccountId={AccountId}, StartDate={StartDate}, EndDate={EndDate}",
+            DesignDashboardSp.Name,
+            DesignDashboardSp.Actions.GetCustomerSales,
             accountId,
             startDate,
             endDate);
@@ -28,36 +33,19 @@ public sealed class CustomerSalesRepository(
         var sw = Stopwatch.StartNew();
         try
         {
-            using var connection = connectionFactory.CreateConnection();
+            await using var connection = (SqlConnection)connectionFactory.CreateConnection();
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-            // Sales list SQL stays LOB-free for performance / transport stability.
-            var rows = await connection.QueryAsync<CustomerSalesResult>(
-                new CommandDefinition(
-                    CustomerSalesSql.ByAccountAndDateRange,
-                    new { AccountId = accountId, StartDate = startDate, EndDate = endDate },
-                    cancellationToken: cancellationToken,
-                    commandTimeout: 120));
+            var result = await ExecuteCustomerSalesAsync(
+                connection, accountId, startDate, endDate, cancellationToken).ConfigureAwait(false);
 
-            List<CustomerSalesDto> result = [.. rows.Select(r => new CustomerSalesDto
-            {
-                DesignId = r.DesignId,
-                DesignCode = r.DesignCode?.Trim() ?? string.Empty,
-                DesignName = r.DesignName?.Trim() ?? string.Empty,
-                TotalSalesQty = r.TotalSalesQty,
-                TotalSalesAmount = r.TotalSalesAmount,
-                PendingOrder = r.PendingOrder,
-                PendingProcess = r.PendingProcess,
-                ImageThumbnail = null
-            })];
+            await EnrichProductNamesAsync(connection, result, cancellationToken).ConfigureAwait(false);
 
-            await EnrichProductNamesAsync(connection, result, cancellationToken);
-
-            // Thumbnails: separate batched ItemDesign query (does not rejoin sales).
             var thumbs = await DesignThumbnailLoader.LoadDataUrlsAsync(
                 connectionFactory,
                 result.Select(r => r.DesignId).ToArray(),
                 logger,
-                cancellationToken);
+                cancellationToken).ConfigureAwait(false);
 
             foreach (var row in result)
             {
@@ -68,11 +56,11 @@ public sealed class CustomerSalesRepository(
             }
 
             sw.Stop();
-            var withImages = result.Count(r => !string.IsNullOrEmpty(r.ImageThumbnail));
             logger.LogInformation(
-                "Customer sales returned {Count} rows ({WithImages} with thumbnails) in {ElapsedMs}ms",
+                "{Proc} returned {Count} rows ({WithImages} with thumbnails) in {ElapsedMs}ms",
+                DesignDashboardSp.Name,
                 result.Count,
-                withImages,
+                result.Count(r => !string.IsNullOrEmpty(r.ImageThumbnail)),
                 sw.ElapsedMilliseconds);
 
             return result;
@@ -82,47 +70,75 @@ public sealed class CustomerSalesRepository(
             sw.Stop();
             logger.LogError(
                 ex,
-                "Customer sales SQL failed for AccountId={AccountId} after {ElapsedMs}ms",
+                "{Proc} failed for AccountId={AccountId} after {ElapsedMs}ms",
+                DesignDashboardSp.Name,
                 accountId,
                 sw.ElapsedMilliseconds);
             throw;
         }
     }
 
+    private static async Task<List<CustomerSalesDto>> ExecuteCustomerSalesAsync(
+        SqlConnection connection,
+        int accountId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken)
+    {
+        await using var command = DesignDashboardSp.Create(
+            connection, DesignDashboardSp.Actions.GetCustomerSales);
+
+        DesignDashboardSp.AddOptionalInt(command, "@AccountId", accountId);
+        DesignDashboardSp.AddOptionalDateTime(command, "@StartDate", startDate);
+        DesignDashboardSp.AddOptionalDateTime(command, "@EndDate", endDate);
+
+        var list = new List<CustomerSalesDto>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            list.Add(new CustomerSalesDto
+            {
+                DesignId = reader.GetInt32(reader.GetOrdinal("DesignId")),
+                DesignCode = reader.GetString(reader.GetOrdinal("DesignCode")).Trim(),
+                DesignName = reader.GetString(reader.GetOrdinal("DesignName")).Trim(),
+                TotalSalesQty = reader.GetDecimal(reader.GetOrdinal("TotalSalesQty")),
+                TotalSalesAmount = reader.GetDecimal(reader.GetOrdinal("TotalSalesAmount")),
+                PendingOrder = reader.GetDecimal(reader.GetOrdinal("PendingOrder")),
+                PendingProcess = reader.GetDecimal(reader.GetOrdinal("PendingProcess")),
+                ProductName = string.Empty,
+                ImageThumbnail = null
+            });
+        }
+
+        return list;
+    }
+
     private static async Task EnrichProductNamesAsync(
-        System.Data.IDbConnection connection,
+        SqlConnection connection,
         List<CustomerSalesDto> rows,
         CancellationToken cancellationToken)
     {
         if (rows.Count == 0) return;
 
-        var designIds = rows.Select(r => r.DesignId).Distinct().ToArray();
-        const string sql = """
-            SELECT DesignId, ProductName
-            FROM (
-                SELECT
-                      DesignId,
-                      ProductName,
-                      ROW_NUMBER() OVER (
-                          PARTITION BY DesignId
-                          ORDER BY CASE WHEN Active = 1 THEN 0 ELSE 1 END, ProductName
-                      ) AS rn
-                FROM Product
-                WHERE DesignId IN @DesignIds
-            ) x
-            WHERE rn = 1;
-            """;
+        await using var command = DesignDashboardSp.Create(
+            connection, DesignDashboardSp.Actions.GetProductNames, commandTimeout: 60);
 
-        var names = await connection.QueryAsync<(int DesignId, string? ProductName)>(
-            new CommandDefinition(
-                sql,
-                new { DesignIds = designIds },
-                cancellationToken: cancellationToken,
-                commandTimeout: 60));
+        AdoNetHelper.AddIntIdListParameter(
+            command,
+            "@DesignIds",
+            rows.Select(r => r.DesignId));
 
-        var lookup = names.ToDictionary(
-            x => x.DesignId,
-            x => x.ProductName?.Trim() ?? string.Empty);
+        var lookup = new Dictionary<int, string>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var id = reader.GetInt32(reader.GetOrdinal("DesignId"));
+            var nameOrdinal = reader.GetOrdinal("ProductName");
+            var name = reader.IsDBNull(nameOrdinal)
+                ? string.Empty
+                : reader.GetString(nameOrdinal).Trim();
+            lookup[id] = name;
+        }
 
         foreach (var row in rows)
         {

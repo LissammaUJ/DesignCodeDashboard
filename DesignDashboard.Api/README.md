@@ -1,6 +1,6 @@
 # Design Dashboard API
 
-Read-only ASP.NET Core Web API (Dapper + SQL Server) for the Angular Design Code Dashboard.
+Read-only ASP.NET Core Web API (Stored Procedures + ADO.NET + SQL Server) for the Angular Design Code Dashboard.
 
 > **Runtime note:** This machine has .NET 10 installed (not .NET 8). The project currently targets `net10.0` so it runs locally. To target ASP.NET Core 8, change `<TargetFramework>` to `net8.0` after installing the [.NET 8 SDK/runtime](https://dotnet.microsoft.com/download/dotnet/8.0).
 
@@ -19,46 +19,25 @@ dotnet run --launch-profile http
 
 | Method | Route | Query |
 |--------|-------|-------|
-| GET | `/api/customer` | — |
+| GET | `/api/customer` | `startDate`, `endDate` |
 | GET | `/api/customer-sales` | `accountId` (or `customerAccountId`), `startDate`, `endDate` |
 | GET | `/api/designs` | `accountId` / `customerAccountId`, `startDate`, `endDate` |
 | GET | `/api/design/{designId}` | optional `accountId` / `customerAccountId`, `startDate`, `endDate` |
+| GET | `/api/designs/{designId}/production` | — |
+| GET | `/api/designs/{designId}/inventory` | — |
 | GET | `/api/dashboard/summary` | same filter |
 | GET | `/api/dashboard/charts` | same filter |
-| GET | `/api/product` | optional filters |
-| GET | `/api/product/{id}` | — |
-
-## Customer sales SQL
-
-`GET /api/customer-sales` runs the **company-provided** parameterized query (no stored procedure, no mock data):
-
-- Parameters: `@AccountId`, `@StartDate`, `@EndDate`
-- Shared in `Helpers/CustomerSalesSql.cs`
-- Also used by Designs list, Design detail sales totals, and Dashboard summary
-
-JSON shape (camelCase):
-
-```json
-[
-  {
-    "designId": 7624,
-    "designCode": "FG09200",
-    "designName": "FG09200",
-    "totalSalesQty": 1740,
-    "totalSalesAmount": 274946.10,
-    "pendingOrder": 0,
-    "pendingProcess": 0
-  }
-]
-```
+| GET | `/api/product` | optional `designId`, `accountId` |
+| GET | `/api/product/{id}` | optional `accountId` |
 
 ## Architecture
 
 ```
-Controller → Service → Repository → Dapper → SQL Server
+Controller → Service → Repository → ADO.NET → dbo.usp_DesignDashboard (@Action)
 ```
 
-- SqlConnection + Dapper (no Entity Framework)
+- Single Stored Procedure: `dbo.usp_DesignDashboard` (deploy `Database/usp_DesignDashboard.sql`)
+- SqlConnection + SqlCommand + SqlParameter + SqlDataReader
 - Global exception middleware + logging
 - Swagger / OpenAPI
 - CORS for Angular (`http://localhost:4200`)

@@ -19,7 +19,7 @@ builder.Services.AddSwaggerGen(options =>
     {
         Title = "Design Dashboard API",
         Version = "v1",
-        Description = "Read-only ASP.NET Core Web API for the Angular Design Code Dashboard (Dapper + SQL Server)."
+        Description = "Read-only ASP.NET Core Web API for the Angular Design Code Dashboard (Stored Procedures + ADO.NET + SQL Server)."
     });
 
     // Relative server so Swagger Execute uses the same scheme/host as the UI.

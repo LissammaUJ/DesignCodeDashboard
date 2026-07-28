@@ -1,28 +1,18 @@
+using System.Data;
 using DesignDashboard.Api.Interfaces;
-using DesignDashboard.Api.Models;
-using Dapper;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
 
 namespace DesignDashboard.Api.Helpers;
 
 /// <summary>
-/// Loads design card thumbnails separately from sales aggregation.
-/// Keeps list sales SQL free of varbinary LOBs (avoids transport error 19),
-/// then enriches ImageThumbnail best-effort in small batches.
+/// Loads design card thumbnails via dbo.usp_DesignDashboard (@Action = GetDesignThumbnails).
+/// Batches DesignIds to avoid huge single payloads over WAN.
 /// </summary>
 public static class DesignThumbnailLoader
 {
     private const int BatchSize = 40;
     private const int CommandTimeoutSeconds = 90;
-
-    private const string ByDesignIdsSql = """
-        SELECT
-              d.DesignId,
-              d.ImgThumbData
-        FROM ItemDesign d
-        WHERE d.DesignId IN @DesignIds
-          AND d.ImgThumbData IS NOT NULL;
-        """;
 
     public static async Task<Dictionary<int, string?>> LoadDataUrlsAsync(
         ISqlConnectionFactory connectionFactory,
@@ -43,24 +33,36 @@ public static class DesignThumbnailLoader
             var batch = ids.Skip(offset).Take(BatchSize).ToArray();
             try
             {
-                using var connection = connectionFactory.CreateConnection();
-                var rows = await connection.QueryAsync<DesignImageRow>(
-                    new CommandDefinition(
-                        ByDesignIdsSql,
-                        new { DesignIds = batch },
-                        cancellationToken: cancellationToken,
-                        commandTimeout: CommandTimeoutSeconds));
+                await using var connection = (SqlConnection)connectionFactory.CreateConnection();
+                await using var command = DesignDashboardSp.Create(
+                    connection,
+                    DesignDashboardSp.Actions.GetDesignThumbnails,
+                    CommandTimeoutSeconds);
 
-                foreach (var row in rows)
+                AdoNetHelper.AddIntIdListParameter(command, "@DesignIds", batch);
+
+                await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+                await using var reader = await command.ExecuteReaderAsync(
+                    CommandBehavior.SequentialAccess,
+                    cancellationToken).ConfigureAwait(false);
+
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 {
-                    result[row.DesignId] = ImageHelper.ToBase64DataUrl(row.ImgThumbData);
+                    var designId = reader.GetInt32(0);
+                    if (reader.IsDBNull(1))
+                    {
+                        continue;
+                    }
+
+                    var bytes = (byte[])reader[1];
+                    result[designId] = ImageHelper.ToBase64DataUrl(bytes);
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)
             {
                 logger.LogWarning(
                     ex,
-                    "Thumbnail batch failed for {Count} designIds (offset {Offset}); continuing without those images",
+                    "Thumbnail SP batch failed for {Count} designIds (offset {Offset}); continuing without those images",
                     batch.Length,
                     offset);
             }

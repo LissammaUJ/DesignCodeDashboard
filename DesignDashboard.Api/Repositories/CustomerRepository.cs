@@ -1,10 +1,14 @@
+using System.Data;
 using DesignDashboard.Api.DTOs;
 using DesignDashboard.Api.Helpers;
 using DesignDashboard.Api.Interfaces;
-using Dapper;
+using Microsoft.Data.SqlClient;
 
 namespace DesignDashboard.Api.Repositories;
 
+/// <summary>
+/// Customer filter dropdown — dbo.usp_DesignDashboard (@Action = GetActiveCustomers).
+/// </summary>
 public sealed class CustomerRepository(ISqlConnectionFactory connectionFactory) : ICustomerRepository
 {
     public async Task<IReadOnlyList<CustomerDto>> GetActiveCustomersAsync(
@@ -12,42 +16,32 @@ public sealed class CustomerRepository(ISqlConnectionFactory connectionFactory) 
         DateTime endDate,
         CancellationToken cancellationToken = default)
     {
-        // Customer = Masters.MasType 65, Local Customer = Masters.MasType 95.
-        const string sql = """
-            SELECT DISTINCT
-                CAST(a.AccountId AS INT) AS AccountId,
-                a.AccountName
-            FROM Account a
-            INNER JOIN Masters m
-                ON a.MasId = m.MasId
-            WHERE
-                a.Active = 1
-                AND m.MasType IN (65, 95)
-                AND EXISTS
-                (
-                    SELECT 1
-                    FROM Bill_mas bm
-                    WHERE bm.AccountId = a.AccountId
-                      AND bm.BillDate BETWEEN @StartDate AND @EndDate
-                )
-            ORDER BY
-                a.AccountName;
-            """;
+        var start = DateHelper.StartOfDay(startDate);
+        var end = DateHelper.EndOfDay(endDate);
 
         try
         {
-            using var connection = connectionFactory.CreateConnection();
-            var rows = await connection.QueryAsync<CustomerDto>(
-                new CommandDefinition(
-                    sql,
-                    new
-                    {
-                        StartDate = DateHelper.StartOfDay(startDate),
-                        EndDate = DateHelper.EndOfDay(endDate)
-                    },
-                    cancellationToken: cancellationToken,
-                    commandTimeout: 120));
-            return [.. rows];
+            await using var connection = (SqlConnection)connectionFactory.CreateConnection();
+            await using var command = DesignDashboardSp.Create(
+                connection, DesignDashboardSp.Actions.GetActiveCustomers);
+
+            DesignDashboardSp.AddOptionalDateTime(command, "@StartDate", start);
+            DesignDashboardSp.AddOptionalDateTime(command, "@EndDate", end);
+
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+            var list = new List<CustomerDto>();
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                list.Add(new CustomerDto
+                {
+                    AccountId = reader.GetInt32(reader.GetOrdinal("AccountId")),
+                    AccountName = reader.GetString(reader.GetOrdinal("AccountName")).Trim()
+                });
+            }
+
+            return list;
         }
         catch (Exception ex) when (ex is OperationCanceledException or TaskCanceledException)
         {
