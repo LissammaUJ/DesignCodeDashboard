@@ -1,0 +1,137 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>DesignDashboard.Api</name>
+    </assembly>
+    <members>
+        <member name="M:DesignDashboard.Api.Controllers.CustomerController.GetCustomers(System.Nullable{System.DateTime},System.Nullable{System.DateTime},System.Threading.CancellationToken)">
+            <summary>
+            Returns active Customer (MasType 65) / Local Customer (MasType 95) accounts
+            that have bills in the selected date range. Excludes Supplier/Courier and other types.
+            </summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Controllers.CustomerSalesController.GetCustomerSales(System.Nullable{System.Int32},System.Nullable{System.Int32},System.DateTime,System.DateTime,System.Threading.CancellationToken)">
+            <summary>
+            Customer-wise design sales using the company-provided SQL query (read-only).
+            Accepts accountId (preferred) or customerAccountId, plus startDate and endDate.
+            </summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Controllers.DashboardController.GetSummary(System.Nullable{System.Int32},System.Nullable{System.Int32},System.DateTime,System.DateTime,System.Threading.CancellationToken)">
+            <summary>
+            Returns dashboard KPI summary for the selected customer and date range (9 KPI cards).
+            </summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Controllers.DesignController.GetDesignById(System.Int32,System.Nullable{System.Int32},System.Nullable{System.Int32},System.Nullable{System.DateTime},System.Nullable{System.DateTime},System.Threading.CancellationToken)">
+            <summary>
+            Returns design details including products and account information.
+            Optional sales filter: accountId / customerAccountId, startDate, endDate.
+            </summary>
+        </member>
+        <member name="T:DesignDashboard.Api.Controllers.DesignTabsController">
+            <summary>
+            Separate read-only endpoints for design detail tabs (Production / Inventory).
+            </summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Controllers.DesignTabsController.#ctor(DesignDashboard.Api.Interfaces.IDesignService)">
+            <summary>
+            Separate read-only endpoints for design detail tabs (Production / Inventory).
+            </summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Controllers.DesignTabsController.GetProduction(System.Int32,System.Threading.CancellationToken)">
+            <summary>
+            Production grid for a design (Date, Location, Produced Quantity, Required Quantity).
+            </summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Controllers.DesignTabsController.GetInventory(System.Int32,System.Threading.CancellationToken)">
+            <summary>Current stock for a design from StockDet (RecQty − IssQty).</summary>
+        </member>
+        <member name="T:DesignDashboard.Api.DTOs.CustomerSalesDto">
+            <summary>Maps company sales SQL result columns for Angular (camelCase JSON).</summary>
+        </member>
+        <member name="P:DesignDashboard.Api.DTOs.CustomerSalesDto.ProductName">
+            <summary>Primary Product.ProductName for the design (reuse existing Product table).</summary>
+        </member>
+        <member name="P:DesignDashboard.Api.DTOs.CustomerSalesDto.ImageThumbnail">
+            <summary>ItemDesign.ImgThumbData as data:image/jpeg;base64,... (batched after sales).</summary>
+        </member>
+        <member name="T:DesignDashboard.Api.Helpers.AdoNetHelper">
+            <summary>
+            Shared ADO.NET helpers for Stored Procedure calls (no Dapper, no inline SQL text).
+            </summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Helpers.AdoNetHelper.CreateIntIdListTable(System.Collections.Generic.IEnumerable{System.Int32})">
+            <summary>
+            Builds a DataTable matching dbo.IntIdList (column Id INT).
+            Used as SqlDbType.Structured parameter for TVP Stored Procedures.
+            </summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Helpers.AdoNetHelper.AddIntIdListParameter(Microsoft.Data.SqlClient.SqlCommand,System.String,System.Collections.Generic.IEnumerable{System.Int32})">
+            <summary>Adds or replaces a table-valued parameter (@DesignIds dbo.IntIdList).</summary>
+        </member>
+        <member name="T:DesignDashboard.Api.Helpers.DesignDashboardSp">
+            <summary>
+            Builds SqlCommand for dbo.usp_DesignDashboard.
+            </summary>
+        </member>
+        <member name="T:DesignDashboard.Api.Helpers.DesignThumbnailLoader">
+            <summary>
+            Loads design card thumbnails via dbo.usp_DesignDashboard (@Action = GetDesignThumbnails).
+            Batches DesignIds to avoid huge single payloads over WAN.
+            </summary>
+        </member>
+        <member name="T:DesignDashboard.Api.Repositories.CustomerRepository">
+            <summary>
+            Customer filter dropdown — dbo.usp_DesignDashboard (@Action = GetActiveCustomers).
+            </summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Repositories.CustomerRepository.#ctor(DesignDashboard.Api.Interfaces.ISqlConnectionFactory)">
+            <summary>
+            Customer filter dropdown — dbo.usp_DesignDashboard (@Action = GetActiveCustomers).
+            </summary>
+        </member>
+        <member name="T:DesignDashboard.Api.Repositories.CustomerSalesRepository">
+            <summary>
+            Design cards — dbo.usp_DesignDashboard (@Action = GetCustomerSales).
+            ProductName is returned by the SP (no separate enrichment).
+            </summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Repositories.CustomerSalesRepository.#ctor(DesignDashboard.Api.Interfaces.ISqlConnectionFactory,Microsoft.Extensions.Logging.ILogger{DesignDashboard.Api.Repositories.CustomerSalesRepository})">
+            <summary>
+            Design cards — dbo.usp_DesignDashboard (@Action = GetCustomerSales).
+            ProductName is returned by the SP (no separate enrichment).
+            </summary>
+        </member>
+        <member name="T:DesignDashboard.Api.Repositories.DashboardRepository">
+            <summary>
+            Dashboard KPI summary (9 cards) — dbo.usp_DesignDashboard (@Action = GetSummary).
+            </summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Repositories.DashboardRepository.#ctor(DesignDashboard.Api.Interfaces.ISqlConnectionFactory,Microsoft.Extensions.Logging.ILogger{DesignDashboard.Api.Repositories.DashboardRepository})">
+            <summary>
+            Dashboard KPI summary (9 cards) — dbo.usp_DesignDashboard (@Action = GetSummary).
+            </summary>
+        </member>
+        <member name="T:DesignDashboard.Api.Repositories.DesignRepository">
+            <summary>
+            Design list + detail — dbo.usp_DesignDashboard only.
+            Controllers / DTOs / Services / Angular unchanged.
+            </summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Repositories.DesignRepository.#ctor(DesignDashboard.Api.Interfaces.ISqlConnectionFactory,Microsoft.Extensions.Logging.ILogger{DesignDashboard.Api.Repositories.DesignRepository})">
+            <summary>
+            Design list + detail — dbo.usp_DesignDashboard only.
+            Controllers / DTOs / Services / Angular unchanged.
+            </summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Repositories.DesignRepository.AlignProductDetailsWithHeader(System.Collections.Generic.IReadOnlyList{DesignDashboard.Api.DTOs.ProductDetailDto},DesignDashboard.Api.Models.DesignHeaderRow)">
+            <summary>
+            Align ProductDetails with GetDesignHeader general-info fields (ProductName, Material, NetWeight, Status).
+            </summary>
+        </member>
+        <member name="T:Program">
+            <summary>
+            Auto-generated public partial Program class for top-level statement apps.
+            </summary>
+        </member>
+    </members>
+</doc>

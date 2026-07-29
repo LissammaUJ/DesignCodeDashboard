@@ -54,7 +54,7 @@ app.UseMiddleware<GlobalExceptionMiddleware>();
 
 // Development: Swagger → CORS → Authentication → Authorization → Controllers
 // No UseHttpsRedirection() in Development (avoids missing developer cert failures).
-// URL binding comes from launchSettings.json (http://localhost:100) only —
+// URL binding comes from launchSettings.json (http://localhost:5000) only —
 // do not also set Kestrel:Endpoints in appsettings.Development.json.
 if (app.Environment.IsDevelopment())
 {

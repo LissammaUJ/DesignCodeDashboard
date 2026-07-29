@@ -4,13 +4,22 @@ This project was generated using [Angular CLI](https://github.com/angular/angula
 
 ## Development server
 
-To start a local development server, run:
+**Recommended (API + Angular SPA on one host):**
+
+```bash
+npm run build:wwwroot
+dotnet run --project DesignDashboard.Api
+```
+
+Then open `http://localhost:5000/dashboard`.
+
+**Angular-only (`ng serve` with API proxy):**
 
 ```bash
 ng serve
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+Opens `http://localhost:4200/` and proxies `/api` to `http://localhost:5000` (API must be running).
 
 ## Code scaffolding
 
