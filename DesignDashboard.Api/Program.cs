@@ -142,7 +142,7 @@ startupLogger.LogInformation(
     DatabaseSettings.ConnectionName,
     !string.IsNullOrWhiteSpace(erpCs));
 
-// Explicit SPA + Angular origins (ports 100, 5000, 4200).
+// SPA + Angular origins: :100, :5000 (API/SPA), :4200 (ng serve).
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("SpaCors", policy =>
@@ -230,5 +230,5 @@ app.MapFallback(async context =>
 });
 
 log.LogInformation(
-    "Starting Kestrel on http://localhost:100 and http://localhost:5000 | Login: /login | API login: POST /api/auth/login");
+    "Starting Kestrel on http://localhost:100 and http://localhost:5000 | Angular :4200 proxies /api → :5000 | Login: /login");
 app.Run();

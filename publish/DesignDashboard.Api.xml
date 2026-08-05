@@ -4,6 +4,32 @@
         <name>DesignDashboard.Api</name>
     </assembly>
     <members>
+        <member name="T:DesignDashboard.Api.Configuration.JwtSettings">
+            <summary>
+            JWT options bound from appsettings.json "Jwt" section.
+            Keep secrets out of source control in production (User Secrets / Key Vault).
+            </summary>
+        </member>
+        <member name="P:DesignDashboard.Api.Configuration.JwtSettings.Key">
+            <summary>HMAC signing key (min 32 characters for HS256).</summary>
+        </member>
+        <member name="P:DesignDashboard.Api.Configuration.JwtSettings.ExpiryMinutes">
+            <summary>Token lifetime in minutes (default 60).</summary>
+        </member>
+        <member name="T:DesignDashboard.Api.Controllers.AuthController">
+            <summary>Backward-compatible auth route. Prefer POST /api/login.</summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Controllers.AuthController.#ctor(DesignDashboard.Api.Interfaces.IAuthService,Microsoft.Extensions.Logging.ILogger{DesignDashboard.Api.Controllers.AuthController})">
+            <summary>Backward-compatible auth route. Prefer POST /api/login.</summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Controllers.CompanyController.GetList(System.Threading.CancellationToken)">
+            <summary>GET /api/company/list — dbo.Usp_ComboBind @TableName='Company', @CoId=0</summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Controllers.CompanyController.ChangeCompany(DesignDashboard.Api.DTOs.ChangeCompanyRequestDto,System.Threading.CancellationToken)">
+            <summary>
+            POST /api/company/change — switch company without logout; re-checks company permission via SP.
+            </summary>
+        </member>
         <member name="M:DesignDashboard.Api.Controllers.CustomerController.GetCustomers(System.Nullable{System.DateTime},System.Nullable{System.DateTime},System.Threading.CancellationToken)">
             <summary>
             Returns active Customer (MasType 65) / Local Customer (MasType 95) accounts
@@ -45,14 +71,28 @@
         <member name="M:DesignDashboard.Api.Controllers.DesignTabsController.GetInventory(System.Int32,System.Threading.CancellationToken)">
             <summary>Current stock for a design from StockDet (RecQty − IssQty).</summary>
         </member>
-        <member name="T:DesignDashboard.Api.DTOs.CustomerSalesDto">
-            <summary>Maps company sales SQL result columns for Angular (camelCase JSON).</summary>
+        <member name="T:DesignDashboard.Api.DTOs.LoginRequestDto">
+            <summary>POST /api/login and POST /api/auth/login body.</summary>
         </member>
-        <member name="P:DesignDashboard.Api.DTOs.CustomerSalesDto.ProductName">
-            <summary>Primary Product.ProductName for the design (reuse existing Product table).</summary>
+        <member name="T:DesignDashboard.Api.DTOs.ChangeCompanyRequestDto">
+            <summary>POST /api/company/change — switch company without re-login.</summary>
+        </member>
+        <member name="T:DesignDashboard.Api.DTOs.AuthAttemptResult">
+            <summary>Result of login / change-company attempt (credentials vs company permission).</summary>
+        </member>
+        <member name="T:DesignDashboard.Api.DTOs.CustomerSalesDto">
+            <summary>
+            One dashboard card = one product. DesignId/Code/Name/image may repeat across rows.
+            </summary>
+        </member>
+        <member name="P:DesignDashboard.Api.DTOs.CustomerSalesDto.ProductId">
+            <summary>Unique card key — Product.ProductId.</summary>
         </member>
         <member name="P:DesignDashboard.Api.DTOs.CustomerSalesDto.ImageThumbnail">
-            <summary>ItemDesign.ImgThumbData as data:image/jpeg;base64,... (batched after sales).</summary>
+            <summary>ItemDesign.ImgThumbData as data:image/jpeg;base64,... (same for all products of a design).</summary>
+        </member>
+        <member name="P:DesignDashboard.Api.DTOs.DashboardSummaryDto.TotalProducts">
+            <summary>COUNT(DISTINCT ProductId) — product-wise cards.</summary>
         </member>
         <member name="T:DesignDashboard.Api.Helpers.AdoNetHelper">
             <summary>
@@ -79,6 +119,30 @@
             Batches DesignIds to avoid huge single payloads over WAN.
             </summary>
         </member>
+        <member name="T:DesignDashboard.Api.Helpers.PasswordHasher">
+            <summary>
+            Matches CarolERP password hashing used by dbo.Usp_LoginCheck (SHA-256 hex uppercase).
+            </summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Interfaces.IAuthRepository.CheckCompanyAccessAsync(System.Int16,System.Byte,System.Threading.CancellationToken)">
+            <summary>dbo.Usp_LoggedInEmployee @Mode = 2 — Check Right To Access Company.</summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Interfaces.IAuthRepository.HasDashboardPermissionAsync(System.Int16,System.Byte,System.Boolean,System.Threading.CancellationToken)">
+            <summary>
+            dbo.Usp_GetDashboardPermission — fallback when Company.ProgId is null
+            (any allowed program for EmplId + CoId means company access).
+            </summary>
+        </member>
+        <member name="T:DesignDashboard.Api.Repositories.AuthRepository">
+            <summary>
+            Auth data access — stored procedures only (ComboBind, LoginCheck, LoggedInEmployee, GetDashboardPermission).
+            </summary>
+        </member>
+        <member name="M:DesignDashboard.Api.Repositories.AuthRepository.#ctor(DesignDashboard.Api.Interfaces.ISqlConnectionFactory,Microsoft.Extensions.Logging.ILogger{DesignDashboard.Api.Repositories.AuthRepository})">
+            <summary>
+            Auth data access — stored procedures only (ComboBind, LoginCheck, LoggedInEmployee, GetDashboardPermission).
+            </summary>
+        </member>
         <member name="T:DesignDashboard.Api.Repositories.CustomerRepository">
             <summary>
             Customer filter dropdown — dbo.usp_DesignDashboard (@Action = GetActiveCustomers).
@@ -91,14 +155,14 @@
         </member>
         <member name="T:DesignDashboard.Api.Repositories.CustomerSalesRepository">
             <summary>
-            Design cards — dbo.usp_DesignDashboard (@Action = GetCustomerSales).
-            ProductName is returned by the SP (no separate enrichment).
+            Product cards — dbo.usp_DesignDashboard (@Action = GetCustomerSales).
+            One row per ProductId; design image/code repeated from Design master.
             </summary>
         </member>
         <member name="M:DesignDashboard.Api.Repositories.CustomerSalesRepository.#ctor(DesignDashboard.Api.Interfaces.ISqlConnectionFactory,Microsoft.Extensions.Logging.ILogger{DesignDashboard.Api.Repositories.CustomerSalesRepository})">
             <summary>
-            Design cards — dbo.usp_DesignDashboard (@Action = GetCustomerSales).
-            ProductName is returned by the SP (no separate enrichment).
+            Product cards — dbo.usp_DesignDashboard (@Action = GetCustomerSales).
+            One row per ProductId; design image/code repeated from Design master.
             </summary>
         </member>
         <member name="T:DesignDashboard.Api.Repositories.DashboardRepository">

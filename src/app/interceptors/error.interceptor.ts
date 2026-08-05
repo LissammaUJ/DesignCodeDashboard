@@ -17,7 +17,7 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
       if (error.status === 0) {
         console.error('[Network] API unreachable', {
           url: error.url ?? req.url,
-          hint: 'Start DesignDashboard.Api on :100/:5000. For :4200 ensure proxy → :5000.',
+          hint: 'Start DesignDashboard.Api on :100 and :5000. For :4200 ensure proxy → :5000.',
         });
       } else if (error.status === 401) {
         console.warn('[Auth] Unauthorized response', {
