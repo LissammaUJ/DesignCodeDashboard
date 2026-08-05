@@ -9,7 +9,10 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(req).pipe(
     catchError((error: HttpErrorResponse) => {
-      const isLogin = /\/auth\/login\b/i.test(req.url);
+      const isPublicAuth =
+        /\/api\/login\b/i.test(req.url) ||
+        /\/auth\/login\b/i.test(req.url) ||
+        /\/company\/list\b/i.test(req.url);
 
       if (error.status === 0) {
         console.error('[Network] API unreachable', {
@@ -19,10 +22,10 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
       } else if (error.status === 401) {
         console.warn('[Auth] Unauthorized response', {
           url: error.url ?? req.url,
-          isLogin,
+          isPublicAuth,
         });
         // Never clear session / redirect on failed login credentials.
-        if (!isLogin) {
+        if (!isPublicAuth) {
           auth.logout(true);
         }
       }

@@ -5,14 +5,13 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace DesignDashboard.Api.Controllers;
 
-/// <summary>Backward-compatible auth route. Prefer POST /api/login.</summary>
 [AllowAnonymous]
 [ApiController]
-[Route("api/auth")]
+[Route("api/login")]
 [Produces("application/json")]
-public sealed class AuthController(IAuthService authService, ILogger<AuthController> logger) : ControllerBase
+public sealed class LoginController(IAuthService authService, ILogger<LoginController> logger) : ControllerBase
 {
-    [HttpPost("login")]
+    [HttpPost]
     [ProducesResponseType(typeof(LoginResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
@@ -22,7 +21,7 @@ public sealed class AuthController(IAuthService authService, ILogger<AuthControl
         CancellationToken cancellationToken)
     {
         logger.LogInformation(
-            "[Auth] Login EmplCode={EmplCode} CoId={CoId}",
+            "[Login] EmplCode={EmplCode} CoId={CoId}",
             request?.ResolvedEmplCode ?? "(null)",
             request?.CompanyId);
 

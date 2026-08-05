@@ -8,10 +8,12 @@ import { InputIconModule } from 'primeng/inputicon';
 import { InputTextModule } from 'primeng/inputtext';
 import { PasswordModule } from 'primeng/password';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
+import { SelectModule } from 'primeng/select';
 import { ToastModule } from 'primeng/toast';
 import { TooltipModule } from 'primeng/tooltip';
 import { MessageService } from 'primeng/api';
 import { AuthService } from '../../services/auth.service';
+import { CompanyOption } from '../../models/auth.models';
 
 const THEME_KEY = 'login_theme_mode';
 
@@ -27,6 +29,7 @@ const THEME_KEY = 'login_theme_mode';
     InputTextModule,
     PasswordModule,
     ProgressSpinnerModule,
+    SelectModule,
     ToastModule,
     TooltipModule,
   ],
@@ -41,14 +44,16 @@ export class LoginComponent implements OnInit {
   private readonly messages = inject(MessageService);
 
   readonly loading = signal(false);
+  readonly companiesLoading = signal(false);
   readonly error = signal<string | null>(null);
-  /** 'dark' | 'light' — visual theme for the login shell only. */
+  readonly companies = signal<CompanyOption[]>([]);
   readonly theme = signal<'dark' | 'light'>('dark');
   readonly isDarkTheme = computed(() => this.theme() === 'dark');
   readonly isLightTheme = computed(() => this.theme() === 'light');
 
   readonly form = this.fb.nonNullable.group({
-    username: ['', [Validators.required, Validators.maxLength(100)]],
+    companyId: [null as number | null, [Validators.required]],
+    emplCode: ['', [Validators.required, Validators.maxLength(10)]],
     password: ['', [Validators.required, Validators.maxLength(200)]],
     rememberMe: [true],
   });
@@ -61,8 +66,10 @@ export class LoginComponent implements OnInit {
 
     const remembered = this.auth.getRememberedUsername();
     if (remembered) {
-      this.form.patchValue({ username: remembered, rememberMe: true });
+      this.form.patchValue({ emplCode: remembered, rememberMe: true });
     }
+
+    this.loadCompanies();
   }
 
   toggleTheme(): void {
@@ -75,40 +82,56 @@ export class LoginComponent implements OnInit {
     this.error.set(null);
     if (this.form.invalid) {
       this.form.markAllAsTouched();
-      this.messages.add({
-        severity: 'warn',
-        summary: 'Validation',
-        detail: 'Enter username and password to continue.',
-      });
       return;
     }
 
     this.loading.set(true);
-    const { username, password, rememberMe } = this.form.getRawValue();
+    const { companyId, emplCode, password, rememberMe } = this.form.getRawValue();
+    const company = this.companies().find((c) => c.coId === companyId);
 
-    this.auth.login({ username: username.trim(), password }, rememberMe).subscribe({
-      next: (res) => {
-        this.loading.set(false);
-        this.messages.add({
-          severity: 'success',
-          summary: 'Access granted',
-          detail: `Signed in as ${res.username}`,
-          life: 2200,
-        });
-        void this.router.navigateByUrl('/dashboard');
+    this.auth
+      .login(
+        {
+          emplCode: emplCode.trim(),
+          password,
+          companyId: Number(companyId),
+          companyName: company?.coName ?? '',
+        },
+        rememberMe
+      )
+      .subscribe({
+        next: () => {
+          this.loading.set(false);
+          void this.router.navigateByUrl('/dashboard');
+        },
+        error: (err) => {
+          this.loading.set(false);
+          const detail =
+            err?.status === 403
+              ? 'You do not have permission to access this company.'
+              : err?.status === 401
+                ? 'Invalid employee code, password, or company.'
+                : (err?.message ?? 'Unable to sign in.');
+          this.error.set(detail);
+          this.messages.add({ severity: 'error', summary: 'Login failed', detail });
+        },
+      });
+  }
+
+  private loadCompanies(): void {
+    this.companiesLoading.set(true);
+    this.auth.getCompanies().subscribe({
+      next: (list) => {
+        this.companies.set(Array.isArray(list) ? list : []);
+        this.companiesLoading.set(false);
+        if (list.length === 1) {
+          this.form.patchValue({ companyId: list[0].coId });
+        }
       },
       error: (err) => {
-        this.loading.set(false);
-        const detail =
-          err?.status === 401
-            ? 'Invalid username or password.'
-            : (err?.message ?? 'Unable to sign in. Verify the API is running.');
-        this.error.set(detail);
-        this.messages.add({
-          severity: 'error',
-          summary: 'Login failed',
-          detail,
-        });
+        this.companiesLoading.set(false);
+        this.companies.set([]);
+        this.error.set(err?.message ?? 'Unable to load companies.');
       },
     });
   }

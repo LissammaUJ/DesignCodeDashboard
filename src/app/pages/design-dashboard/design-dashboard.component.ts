@@ -22,6 +22,7 @@ import {
 } from '@angular/forms';
 import { debounceTime, merge, startWith } from 'rxjs';
 import { ButtonModule } from 'primeng/button';
+import { DialogModule } from 'primeng/dialog';
 import { DialogService, DynamicDialogModule } from 'primeng/dynamicdialog';
 import { MenuModule } from 'primeng/menu';
 import { PaginatorModule, PaginatorState } from 'primeng/paginator';
@@ -31,6 +32,7 @@ import { SkeletonModule } from 'primeng/skeleton';
 import { ToastModule } from 'primeng/toast';
 import { TooltipModule } from 'primeng/tooltip';
 import { MenuItem, MessageService } from 'primeng/api';
+import { CompanyOption } from '../../models/auth.models';
 import { PAGE_SIZE_OPTIONS } from '../../core/constants/design.constants';
 import {
   DashboardKpiSummary,
@@ -89,6 +91,7 @@ function dateRangeValidator(): ValidatorFn {
     FormsModule,
     ReactiveFormsModule,
     ButtonModule,
+    DialogModule,
     MenuModule,
     SelectModule,
     PaginatorModule,
@@ -189,20 +192,45 @@ export class DesignDashboardComponent implements OnInit {
     return match?.label?.trim() || '';
   });
 
-  readonly authUsername = computed(() => this.auth.getUsername()?.trim() || 'User');
+  readonly authUsername = computed(() => {
+    this.auth.sessionVersion();
+    const emp = this.auth.getEmployee();
+    return emp?.emplName?.trim() || this.auth.getUsername()?.trim() || 'User';
+  });
+
+  readonly authCompanyName = computed(() => {
+    this.auth.sessionVersion();
+    return this.auth.getCompanyName()?.trim() || '';
+  });
+
+  readonly profileEmployee = computed(() => {
+    this.auth.sessionVersion();
+    return this.auth.getEmployee();
+  });
+
+  readonly profileVisible = signal(false);
+  readonly changeCompanyVisible = signal(false);
+  readonly changeCompanyLoading = signal(false);
+  readonly companiesLoading = signal(false);
+  readonly companies = signal<CompanyOption[]>([]);
+  readonly selectedChangeCompanyId = signal<number | null>(null);
 
   userMenuItems: MenuItem[] = [];
 
   ngOnInit(): void {
-    const user = this.auth.getUsername()?.trim() || 'User';
     this.userMenuItems = [
       {
         label: 'Account',
         items: [
           {
-            label: user,
-            icon: 'pi pi-id-card',
-            disabled: true,
+            label: 'My Profile',
+            icon: 'pi pi-user',
+            command: () => this.openProfile(),
+          },
+          {
+            label: 'Change Company',
+            icon: 'pi pi-building',
+            command: () => this.openChangeCompany(),
           },
           { separator: true },
           {
@@ -376,6 +404,79 @@ export class DesignDashboardComponent implements OnInit {
 
   toggleFilterCollapse(): void {
     this.filterCollapsed.update((v) => !v);
+  }
+
+  openProfile(): void {
+    this.profileVisible.set(true);
+  }
+
+  openChangeCompany(): void {
+    this.selectedChangeCompanyId.set(this.auth.getCompanyId());
+    this.changeCompanyVisible.set(true);
+    this.companiesLoading.set(true);
+    this.auth.getCompanies().subscribe({
+      next: (list) => {
+        this.companies.set(Array.isArray(list) ? list : []);
+        this.companiesLoading.set(false);
+      },
+      error: (err) => {
+        this.companiesLoading.set(false);
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Companies',
+          detail: err?.message ?? 'Unable to load companies.',
+        });
+      },
+    });
+  }
+
+  confirmChangeCompany(): void {
+    const companyId = this.selectedChangeCompanyId();
+    if (!companyId) {
+      this.messageService.add({
+        severity: 'warn',
+        summary: 'Company',
+        detail: 'Select a company to continue.',
+      });
+      return;
+    }
+
+    if (companyId === this.auth.getCompanyId()) {
+      this.changeCompanyVisible.set(false);
+      return;
+    }
+
+    const company = this.companies().find((c) => c.coId === companyId);
+    this.changeCompanyLoading.set(true);
+    this.auth
+      .changeCompany({
+        companyId,
+        companyName: company?.coName ?? '',
+      })
+      .subscribe({
+        next: (res) => {
+          this.changeCompanyLoading.set(false);
+          this.changeCompanyVisible.set(false);
+          this.messageService.add({
+            severity: 'success',
+            summary: 'Company changed',
+            detail: res.message || `Switched to ${res.company?.coName ?? 'selected company'}`,
+            life: 2500,
+          });
+        },
+        error: (err) => {
+          this.changeCompanyLoading.set(false);
+          const detail =
+            err?.status === 403
+              ? 'You do not have permission to access this company.'
+              : (err?.message ?? 'Unable to change company.');
+          this.messageService.add({
+            severity: 'error',
+            summary: 'Change company',
+            detail,
+          });
+        },
+      });
   }
 
   onLogout(): void {

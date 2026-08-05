@@ -2,21 +2,47 @@ using DesignDashboard.Api.DTOs;
 
 namespace DesignDashboard.Api.Interfaces;
 
-/// <summary>
-/// Authentication abstraction — currently hardcoded credentials.
-/// Swap the implementation for database / Identity later without changing JWT issuance.
-/// </summary>
-public interface IAuthService
+public interface IAuthRepository
 {
+    Task<IReadOnlyList<CompanyDto>> GetCompaniesAsync(CancellationToken cancellationToken = default);
+
+    Task<EmployeeLoginDto?> LoginCheckAsync(
+        string emplCode,
+        string encryptedPassword,
+        byte companyId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>dbo.Usp_LoggedInEmployee @Mode = 2 — Check Right To Access Company.</summary>
+    Task<int> CheckCompanyAccessAsync(
+        short emplId,
+        byte companyId,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
-    /// Validates credentials and returns a JWT when successful; otherwise null.
+    /// dbo.Usp_GetDashboardPermission — fallback when Company.ProgId is null
+    /// (any allowed program for EmplId + CoId means company access).
     /// </summary>
-    LoginResponseDto? Authenticate(LoginRequestDto request);
+    Task<bool> HasDashboardPermissionAsync(
+        short emplId,
+        byte companyId,
+        bool isAdmin,
+        CancellationToken cancellationToken = default);
 }
 
-/// <summary>Issues signed JWT access tokens (HMAC SHA-256).</summary>
+public interface IAuthService
+{
+    Task<IReadOnlyList<CompanyDto>> GetCompaniesAsync(CancellationToken cancellationToken = default);
+
+    Task<AuthAttemptResult> AuthenticateAsync(LoginRequestDto request, CancellationToken cancellationToken = default);
+
+    Task<AuthAttemptResult> ChangeCompanyAsync(
+        JwtUserIdentity user,
+        ChangeCompanyRequestDto request,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IJwtService
 {
-    string GenerateToken(string username);
+    string GenerateToken(EmployeeLoginDto employee, CompanyDto company);
     int ExpiryMinutes { get; }
 }

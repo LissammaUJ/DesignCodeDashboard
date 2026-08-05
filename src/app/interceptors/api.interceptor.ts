@@ -14,9 +14,12 @@ export const apiInterceptor: HttpInterceptorFn = (req, next) => {
     req.url.includes(`${environment.apiUrl}/`) ||
     req.url.startsWith('/api');
 
-  const isLogin = /\/auth\/login\b/i.test(req.url);
+  const isPublicAuth =
+    /\/api\/login\b/i.test(req.url) ||
+    /\/auth\/login\b/i.test(req.url) ||
+    /\/company\/list\b/i.test(req.url);
 
-  if (isApiRequest && !isLogin) {
+  if (isApiRequest && !isPublicAuth) {
     const token = auth.getToken();
     if (token) {
       headers = headers.set('Authorization', `Bearer ${token}`);

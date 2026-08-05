@@ -54,9 +54,16 @@
         (onClick)="onRefresh()"
       />
       <div class="erp-dashboard__user">
-        <span class="erp-dashboard__user-name" [attr.title]="authUsername()">
-          {{ authUsername() }}
-        </span>
+        <div class="erp-dashboard__user-meta">
+          <span class="erp-dashboard__user-name" [attr.title]="authUsername()">
+            {{ authUsername() }}
+          </span>
+          @if (authCompanyName()) {
+            <span class="erp-dashboard__company-name" [attr.title]="authCompanyName()">
+              {{ authCompanyName() }}
+            </span>
+          }
+        </div>
         <p-button
           type="button"
           icon="pi pi-user"
@@ -72,6 +79,73 @@
       </div>
     </div>
   </header>
+
+  <p-dialog
+    header="My Profile"
+    [modal]="true"
+    [draggable]="false"
+    [resizable]="false"
+    [style]="{ width: 'min(92vw, 420px)' }"
+    [visible]="profileVisible()"
+    (visibleChange)="profileVisible.set($event)"
+    styleClass="erp-profile-dialog"
+  >
+    @if (profileEmployee(); as emp) {
+      <div class="erp-profile">
+        <div class="erp-profile__row"><span>Employee Code</span><strong>{{ emp.emplCode }}</strong></div>
+        <div class="erp-profile__row"><span>Name</span><strong>{{ emp.emplName || '—' }}</strong></div>
+        <div class="erp-profile__row"><span>Designation</span><strong>{{ emp.designation || '—' }}</strong></div>
+        <div class="erp-profile__row"><span>Company</span><strong>{{ authCompanyName() || '—' }}</strong></div>
+      </div>
+    } @else {
+      <p class="erp-profile__empty">Profile details are not available for this session.</p>
+    }
+  </p-dialog>
+
+  <p-dialog
+    header="Change Company"
+    [modal]="true"
+    [draggable]="false"
+    [resizable]="false"
+    [style]="{ width: 'min(92vw, 420px)' }"
+    [visible]="changeCompanyVisible()"
+    (visibleChange)="changeCompanyVisible.set($event)"
+    styleClass="erp-change-company-dialog"
+  >
+    <div class="erp-change-company">
+      <label for="changeCompanySelect">Company</label>
+      <p-select
+        inputId="changeCompanySelect"
+        [options]="companies()"
+        optionLabel="coName"
+        optionValue="coId"
+        placeholder="Select company"
+        [filter]="true"
+        filterBy="coName"
+        [loading]="companiesLoading()"
+        [ngModel]="selectedChangeCompanyId()"
+        (ngModelChange)="selectedChangeCompanyId.set($event)"
+        styleClass="w-full"
+        appendTo="body"
+      />
+    </div>
+    <ng-template pTemplate="footer">
+      <p-button
+        label="Cancel"
+        severity="secondary"
+        [outlined]="true"
+        (onClick)="changeCompanyVisible.set(false)"
+        [disabled]="changeCompanyLoading()"
+      />
+      <p-button
+        label="Switch Company"
+        icon="pi pi-check"
+        (onClick)="confirmChangeCompany()"
+        [loading]="changeCompanyLoading()"
+        [disabled]="companiesLoading() || changeCompanyLoading()"
+      />
+    </ng-template>
+  </p-dialog>
 
   <!-- KPI Summary -->
   <section class="erp-dashboard__section" aria-label="KPI summary">
