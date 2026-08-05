@@ -12,8 +12,11 @@ dotnet restore
 dotnet run --launch-profile http
 ```
 
-- Swagger UI: http://localhost:5000/swagger
-- Base URL: http://localhost:5000
+- Swagger UI: http://localhost:100/swagger or http://localhost:5000/swagger
+- Dashboard: http://localhost:100/dashboard or http://localhost:5000/dashboard
+- Kestrel binds both ports via `launchSettings.json` (`applicationUrl`)
+- After Angular changes: run `npm run build:wwwroot` then restart the API (`dotnet publish` does not build Angular by itself)
+- `ng serve` (4200) proxies `/api` → `http://localhost:5000`
 
 ## Endpoints (GET only)
 
@@ -56,4 +59,6 @@ dotnet build
 dotnet run --launch-profile http
 ```
 
-URL binding is only in `Properties/launchSettings.json` (`http://localhost:5000`). Do not also set `Kestrel:Endpoints` in Development appsettings (that caused address override warnings).
+URL binding is only in `Properties/launchSettings.json`:
+`http://localhost:100;http://localhost:5000` (both ports).
+Do not also set `Kestrel:Endpoints` in Development appsettings (that caused address override warnings).

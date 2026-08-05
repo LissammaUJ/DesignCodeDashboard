@@ -15,7 +15,10 @@ import { SelectOption } from '../../core/models/design.models';
 export class AdvancedFilterComponent {
   readonly filterForm = input.required<FormGroup>();
   readonly options = input.required<Record<string, SelectOption[]>>();
+  /** Customer dropdown loading indicator. */
   readonly loading = input(false);
+  /** Search / KPI request in flight. */
+  readonly searching = input(false);
   readonly collapsed = input(false);
 
   readonly search = output<void>();

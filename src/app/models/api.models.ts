@@ -82,7 +82,7 @@ export interface DesignInventoryDto {
 }
 
 export interface DashboardSummaryDto {
-  totalDesigns: number;
+  totalProducts: number;
   totalOrderQty: number;
   totalOrderSalesValue: number;
   totalSalesQty: number;
@@ -100,16 +100,18 @@ export interface ApiErrorResponse {
   timestamp?: string;
 }
 
-/** Exact shape from company sales SQL /api/customer-sales */
+/** One card per product from GET /api/customer-sales (DesignId may repeat). */
 export interface CustomerSalesDto {
   designId: number;
   designCode: string;
   designName: string;
+  /** Unique card key */
+  productId: number;
   productName?: string;
   totalSalesQty: number;
   totalSalesAmount: number;
   pendingOrder: number;
   pendingProcess: number;
-  /** ItemDesign.ImgThumbData as data:image/jpeg;base64,... */
+  /** ItemDesign.ImgThumbData — same image for all products of a design */
   imageThumbnail?: string | null;
 }

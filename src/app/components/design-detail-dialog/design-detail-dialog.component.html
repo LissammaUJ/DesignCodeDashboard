@@ -16,7 +16,8 @@
         <p class="detail-dialog__eyebrow">Design Details</p>
         @if (detail(); as d) {
           <h2>{{ d.designCode }}</h2>
-          <p class="detail-dialog__subtitle">{{ d.designName || 'No Data Available' }}</p>
+          <p class="detail-dialog__subtitle">{{ d.designName || '-' }}</p>
+          <p class="detail-dialog__customer">{{ d.customerName || '-' }}</p>
         } @else {
           <h2>Loading…</h2>
         }
@@ -135,15 +136,11 @@
               </div>
               <div class="detail-dialog__info detail-dialog__info--erp">
                 <label>Material</label>
-                <span>{{ d.general.material }}</span>
+                <span>{{ d.general.material || '-' }}</span>
               </div>
               <div class="detail-dialog__info detail-dialog__info--erp">
                 <label>Net Weight</label>
-                <span>{{ hasNetWeight() ? d.general.netWeight + ' g' : 'No Data Available' }}</span>
-              </div>
-              <div class="detail-dialog__info detail-dialog__info--erp">
-                <label>Status</label>
-                <span>{{ d.general.status }}</span>
+                <span>{{ hasNetWeight() ? d.general.netWeight + ' g' : '-' }}</span>
               </div>
               <div class="detail-dialog__info detail-dialog__info--erp">
                 <label>Current Quantity</label>

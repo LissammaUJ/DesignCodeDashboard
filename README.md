@@ -11,7 +11,7 @@ npm run build:wwwroot
 dotnet run --project DesignDashboard.Api
 ```
 
-Then open `http://localhost:5000/dashboard`.
+Then open `http://localhost:100/dashboard` or `http://localhost:5000/dashboard` (both bound).
 
 **Angular-only (`ng serve` with API proxy):**
 

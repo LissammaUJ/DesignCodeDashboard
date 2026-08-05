@@ -1,0 +1,29 @@
+Using launch settings from DesignDashboard.Api\Properties\launchSettings.json...
+info: Startup[0]
+      Bootstrapping DesignDashboard.Api | Environment=Development | ContentRoot=C:\Users\Digital Technologies\Documents\Report\DesignDashboard.Api
+info: Startup[0]
+      Registering DI services (no DB connection at startup — ADO.NET is lazy).
+info: Startup[0]
+      Connection string 'ERPConnectionString' present=True (SQL is opened only on first API request).
+info: DesignDashboard.Api[0]
+      Pipeline build start | Environment=Development | ApplicationName=DesignDashboard.Api
+info: DesignDashboard.Api[0]
+      Enabling Swagger + SwaggerUI at /swagger
+info: DesignDashboard.Api[0]
+      Swagger middleware registered
+info: DesignDashboard.Api[0]
+      Starting Kestrel. Open http://localhost:100/swagger or http://localhost:5000/swagger
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:100
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5000
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Development
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: C:\Users\Digital Technologies\Documents\Report\DesignDashboard.Api
+info: DesignDashboard.Api.Repositories.DashboardRepository[0]
+      dbo.usp_DesignDashboard Action=GetSummary returned 8 rows in 1319ms for AccountId=23
+info: DesignDashboard.Api.Repositories.DashboardRepository[0]
+      dbo.usp_DesignDashboard Action=GetSummary returned 8 rows in 253ms for AccountId=23

@@ -87,10 +87,15 @@ BEGIN
               a.AccountName;
     END
 
-    ---------------------------------------------------------------------------
-    -- GetCustomerSales
-    -- Design cards — sales by AccountId + date range (ProductName via OUTER APPLY)
-    ---------------------------------------------------------------------------
+    /******************************************************************************
+      Action     : GetCustomerSales
+      Purpose    : Dashboard cards — ONE ROW PER PRODUCT (not per Design).
+                   Same DesignCode / DesignName / DesignId may repeat.
+                   Sales, PendingOrder, PendingProcess are product-wise.
+      Parameters : @AccountId, @StartDate, @EndDate
+      Returns    : DesignId, DesignCode, DesignName, ProductId, ProductName,
+                   TotalSalesQty, TotalSalesAmount, PendingOrder, PendingProcess
+    ******************************************************************************/
     ELSE IF (@Action = N'GetCustomerSales')
     BEGIN
         IF (@AccountId IS NULL OR @AccountId <= 0)
@@ -105,49 +110,133 @@ BEGIN
             RETURN;
         END;
 
-        SELECT
-              d.DesignId,
-              ISNULL(d.DesignCode, N'') AS DesignCode,
-              ISNULL(d.DesignName, N'') AS DesignName,
-              ISNULL(NULLIF(LTRIM(RTRIM(prod.ProductName)), N''), N'-') AS ProductName,
-              CAST(ISNULL(SUM(bet.Quantity), 0) AS DECIMAL(18, 2)) AS TotalSalesQty,
-              CAST(ISNULL(SUM(bet.Amount * bm.ExchRate), 0) AS DECIMAL(18, 2)) AS TotalSalesAmount,
-              CAST(0 AS DECIMAL(18, 2)) AS PendingOrder,
-              CAST(0 AS DECIMAL(18, 2)) AS PendingProcess
-        FROM Bill_mas bm
-        INNER JOIN Bill_Exp_trn bet
-               ON bm.BillId = bet.BillId
-        INNER JOIN Bo_trn bo
-               ON bet.BoSl = bo.BoSl
-        INNER JOIN Product p
-               ON bo.ProductId = p.ProductId
-        INNER JOIN ItemDesign d
-               ON p.DesignId = d.DesignId
-        OUTER APPLY
+        ;WITH ProductSales AS
         (
-            SELECT TOP (1)
-                  px.ProductName
-            FROM Product px
-            WHERE px.DesignId = d.DesignId
-            ORDER BY
-                  CASE WHEN px.Active = 1 THEN 0 ELSE 1 END,
-                  px.ProductName
-        ) prod
-        WHERE bm.AccountId = @AccountId
-          AND bm.BillDate BETWEEN @StartDate AND @EndDate
+            SELECT
+                  d.DesignId,
+                  ISNULL(d.DesignCode, N'') AS DesignCode,
+                  ISNULL(d.DesignName, N'') AS DesignName,
+                  p.ProductId,
+                  ISNULL(NULLIF(LTRIM(RTRIM(p.ProductName)), N''), N'-') AS ProductName,
+                  CAST(ISNULL(SUM(bet.Quantity), 0) AS DECIMAL(18, 2)) AS TotalSalesQty,
+                  CAST(ISNULL(SUM(bet.Amount * bm.ExchRate), 0) AS DECIMAL(18, 2)) AS TotalSalesAmount
+            FROM Bill_mas bm
+            INNER JOIN Bill_Exp_trn bet
+                   ON bm.BillId = bet.BillId
+            INNER JOIN Bo_trn bo
+                   ON bet.BoSl = bo.BoSl
+            INNER JOIN Product p
+                   ON bo.ProductId = p.ProductId
+            INNER JOIN ItemDesign d
+                   ON p.DesignId = d.DesignId
+            WHERE bm.AccountId = @AccountId
+              AND bm.BillDate BETWEEN @StartDate AND @EndDate
+            GROUP BY
+                  d.DesignId,
+                  d.DesignCode,
+                  d.DesignName,
+                  p.ProductId,
+                  p.ProductName
+        ),
+        ProductBoSl AS
+        (
+            SELECT
+                  p2.ProductId,
+                  bo2.BoSl,
+                  CAST(ISNULL(MAX(bo2.Quantity), 0) AS DECIMAL(18, 2)) AS Quantity,
+                  CAST(ISNULL(MAX(bo2.AddlQty), 0) AS DECIMAL(18, 2)) AS AddlQty,
+                  CAST(ISNULL(MAX(bo2.FiledQty), 0) AS DECIMAL(18, 2)) AS FiledQty,
+                  CAST(ISNULL(MAX(bo2.Rate), 0) AS DECIMAL(18, 2)) AS Rate
+            FROM Bill_mas bm2
+            INNER JOIN Bill_Exp_trn bet2
+                   ON bm2.BillId = bet2.BillId
+            INNER JOIN Bo_trn bo2
+                   ON bet2.BoSl = bo2.BoSl
+            INNER JOIN Product p2
+                   ON bo2.ProductId = p2.ProductId
+            WHERE bm2.AccountId = @AccountId
+              AND bm2.BillDate BETWEEN @StartDate AND @EndDate
+              AND EXISTS (SELECT 1 FROM ProductSales ps WHERE ps.ProductId = p2.ProductId)
+            GROUP BY
+                  p2.ProductId,
+                  bo2.BoSl
+        ),
+        ProductOrderAgg AS
+        (
+            SELECT
+                  ProductId,
+                  CAST(ISNULL(SUM(
+                      CASE
+                          WHEN (Quantity + AddlQty - FiledQty) < 0 THEN 0
+                          ELSE (Quantity + AddlQty - FiledQty)
+                      END
+                  ), 0) AS DECIMAL(18, 2)) AS PendingOrder
+            FROM ProductBoSl
+            GROUP BY ProductId
+        ),
+        ProductBoSlProcess AS
+        (
+            SELECT
+                  b.ProductId,
+                  b.BoSl,
+                  CAST(ISNULL((
+                      SELECT SUM(
+                          CASE
+                              WHEN (ISNULL(Po_trn.Quantity, 0) - ISNULL(LandedQty, 0) - ISNULL(ProducedQty, 0)) < 0
+                              THEN 0
+                              ELSE ISNULL(Po_trn.Quantity, 0) - ISNULL(LandedQty, 0) - ISNULL(ProducedQty, 0)
+                          END
+                      )
+                      FROM Po_trn
+                      INNER JOIN Pi_trn
+                             ON Po_trn.PiSl = Pi_trn.PiSl
+                      WHERE Pi_trn.BoSl = b.BoSl
+                  ), 0) AS DECIMAL(18, 2)) AS PendingProcess
+            FROM ProductBoSl b
+        ),
+        ProductProcess AS
+        (
+            SELECT
+                  ProductId,
+                  CAST(ISNULL(SUM(PendingProcess), 0) AS DECIMAL(18, 2)) AS PendingProcess
+            FROM ProductBoSlProcess
+            GROUP BY ProductId
+        )
+        -- Guarantee exactly one row per ProductId (no join fan-out duplicates).
+        SELECT
+              s.DesignId,
+              s.DesignCode,
+              s.DesignName,
+              s.ProductId,
+              s.ProductName,
+              CAST(ISNULL(s.TotalSalesQty, 0) AS DECIMAL(18, 2)) AS TotalSalesQty,
+              CAST(ISNULL(s.TotalSalesAmount, 0) AS DECIMAL(18, 2)) AS TotalSalesAmount,
+              CAST(CASE WHEN ISNULL(MAX(o.PendingOrder), 0) < 0 THEN 0 ELSE ISNULL(MAX(o.PendingOrder), 0) END AS DECIMAL(18, 2)) AS PendingOrder,
+              CAST(CASE WHEN ISNULL(MAX(pr.PendingProcess), 0) < 0 THEN 0 ELSE ISNULL(MAX(pr.PendingProcess), 0) END AS DECIMAL(18, 2)) AS PendingProcess
+        FROM ProductSales s
+        LEFT JOIN ProductOrderAgg o
+               ON o.ProductId = s.ProductId
+        LEFT JOIN ProductProcess pr
+               ON pr.ProductId = s.ProductId
         GROUP BY
-              d.DesignId,
-              d.DesignCode,
-              d.DesignName,
-              prod.ProductName
+              s.DesignId,
+              s.DesignCode,
+              s.DesignName,
+              s.ProductId,
+              s.ProductName,
+              s.TotalSalesQty,
+              s.TotalSalesAmount
         ORDER BY
-              d.DesignCode;
+              s.DesignCode,
+              s.ProductName;
     END
 
-    ---------------------------------------------------------------------------
-    -- GetSummary
-    -- Dashboard KPI summary — one row per Design (aggregated in C#)
-    ---------------------------------------------------------------------------
+    /******************************************************************************
+      Action     : GetSummary
+      Purpose    : KPI rows — ONE ROW PER PRODUCT (same grain as GetCustomerSales).
+                   C# aggregates: TotalProducts = COUNT(DISTINCT ProductId),
+                   Pending* = SUM(product values). Never group KPIs by DesignId only.
+    ******************************************************************************/
     ELSE IF (@Action = N'GetSummary')
     BEGIN
         IF (@AccountId IS NULL OR @AccountId <= 0)
@@ -162,11 +251,14 @@ BEGIN
             RETURN;
         END;
 
-        ;WITH DesignSales AS (
+        ;WITH ProductSales AS
+        (
             SELECT
                   d.DesignId,
                   ISNULL(d.DesignCode, N'') AS DesignCode,
                   ISNULL(d.DesignName, N'') AS DesignName,
+                  p.ProductId,
+                  ISNULL(NULLIF(LTRIM(RTRIM(p.ProductName)), N''), N'-') AS ProductName,
                   CAST(ISNULL(SUM(bet.Quantity), 0) AS DECIMAL(18, 2)) AS TotalSalesQty,
                   CAST(ISNULL(SUM(bet.Amount * bm.ExchRate), 0) AS DECIMAL(18, 2)) AS TotalSalesAmount
             FROM Bill_mas bm
@@ -183,11 +275,14 @@ BEGIN
             GROUP BY
                   d.DesignId,
                   d.DesignCode,
-                  d.DesignName
+                  d.DesignName,
+                  p.ProductId,
+                  p.ProductName
         ),
-        DesignBoSl AS (
+        ProductBoSl AS
+        (
             SELECT
-                  p2.DesignId,
+                  p2.ProductId,
                   bo2.BoSl,
                   CAST(ISNULL(MAX(bo2.Quantity), 0) AS DECIMAL(18, 2)) AS Quantity,
                   CAST(ISNULL(MAX(bo2.AddlQty), 0) AS DECIMAL(18, 2)) AS AddlQty,
@@ -203,60 +298,83 @@ BEGIN
                     ON bo2.ProductId = p2.ProductId
             WHERE bm2.AccountId = @AccountId
               AND bm2.BillDate BETWEEN @StartDate AND @EndDate
-              AND EXISTS (SELECT 1 FROM DesignSales ds WHERE ds.DesignId = p2.DesignId)
+              AND EXISTS (SELECT 1 FROM ProductSales ps WHERE ps.ProductId = p2.ProductId)
             GROUP BY
-                  p2.DesignId,
+                  p2.ProductId,
                   bo2.BoSl
         ),
-        DesignOrderAgg AS (
+        ProductOrderAgg AS
+        (
             SELECT
-                  DesignId,
+                  ProductId,
                   CAST(ISNULL(SUM(Quantity), 0) AS DECIMAL(18, 2)) AS TotalOrderQty,
                   CAST(ISNULL(SUM(Amount), 0) AS DECIMAL(18, 2)) AS TotalOrderAmount,
-                  CAST(ISNULL(SUM(Quantity + AddlQty - FiledQty), 0) AS DECIMAL(18, 2)) AS PendingOrder,
-                  CAST(ISNULL(SUM((Quantity + AddlQty - FiledQty) * Rate), 0) AS DECIMAL(18, 2)) AS PendingOrderValue,
+                  CAST(ISNULL(SUM(
+                      CASE
+                          WHEN (Quantity + AddlQty - FiledQty) < 0 THEN 0
+                          ELSE (Quantity + AddlQty - FiledQty)
+                      END
+                  ), 0) AS DECIMAL(18, 2)) AS PendingOrder,
+                  CAST(ISNULL(SUM(
+                      CASE
+                          WHEN (Quantity + AddlQty - FiledQty) < 0 THEN 0
+                          ELSE (Quantity + AddlQty - FiledQty) * Rate
+                      END
+                  ), 0) AS DECIMAL(18, 2)) AS PendingOrderValue,
                   CAST(ISNULL(SUM(FiledQty), 0) AS DECIMAL(18, 2)) AS CompletedOrderQty
-            FROM DesignBoSl
-            GROUP BY DesignId
+            FROM ProductBoSl
+            GROUP BY ProductId
         ),
-        DesignBoSlProcess AS (
+        ProductBoSlProcess AS
+        (
             SELECT
-                  b.DesignId,
+                  b.ProductId,
                   b.BoSl,
                   CAST(ISNULL((
-                      SELECT SUM(ISNULL(Po_trn.Quantity, 0) - ISNULL(LandedQty, 0) - ISNULL(ProducedQty, 0))
+                      SELECT SUM(
+                          CASE
+                              WHEN (ISNULL(Po_trn.Quantity, 0) - ISNULL(LandedQty, 0) - ISNULL(ProducedQty, 0)) < 0
+                              THEN 0
+                              ELSE ISNULL(Po_trn.Quantity, 0) - ISNULL(LandedQty, 0) - ISNULL(ProducedQty, 0)
+                          END
+                      )
                       FROM Po_trn
                       INNER JOIN Pi_trn
                              ON Po_trn.PiSl = Pi_trn.PiSl
                       WHERE Pi_trn.BoSl = b.BoSl
                   ), 0) AS DECIMAL(18, 2)) AS PendingProcess
-            FROM DesignBoSl b
+            FROM ProductBoSl b
         ),
-        DesignProcess AS (
+        ProductProcess AS
+        (
             SELECT
-                  DesignId,
+                  ProductId,
                   CAST(ISNULL(SUM(PendingProcess), 0) AS DECIMAL(18, 2)) AS PendingProcess
-            FROM DesignBoSlProcess
-            GROUP BY DesignId
+            FROM ProductBoSlProcess
+            GROUP BY ProductId
         )
         SELECT
               s.DesignId,
               s.DesignCode,
               s.DesignName,
+              s.ProductId,
+              s.ProductName,
               CAST(ISNULL(s.TotalSalesQty, 0) AS DECIMAL(18, 2)) AS TotalSalesQty,
               CAST(ISNULL(s.TotalSalesAmount, 0) AS DECIMAL(18, 2)) AS TotalSalesAmount,
-              CAST(ISNULL(o.PendingOrder, 0) AS DECIMAL(18, 2)) AS PendingOrder,
-              CAST(ISNULL(p.PendingProcess, 0) AS DECIMAL(18, 2)) AS PendingProcess,
+              CAST(CASE WHEN ISNULL(o.PendingOrder, 0) < 0 THEN 0 ELSE ISNULL(o.PendingOrder, 0) END AS DECIMAL(18, 2)) AS PendingOrder,
+              CAST(CASE WHEN ISNULL(pr.PendingProcess, 0) < 0 THEN 0 ELSE ISNULL(pr.PendingProcess, 0) END AS DECIMAL(18, 2)) AS PendingProcess,
               CAST(ISNULL(o.TotalOrderQty, 0) AS DECIMAL(18, 2)) AS TotalOrderQty,
               CAST(ISNULL(o.TotalOrderAmount, 0) AS DECIMAL(18, 2)) AS TotalOrderAmount,
-              CAST(ISNULL(o.PendingOrderValue, 0) AS DECIMAL(18, 2)) AS PendingOrderValue,
+              CAST(CASE WHEN ISNULL(o.PendingOrderValue, 0) < 0 THEN 0 ELSE ISNULL(o.PendingOrderValue, 0) END AS DECIMAL(18, 2)) AS PendingOrderValue,
               CAST(ISNULL(o.CompletedOrderQty, 0) AS DECIMAL(18, 2)) AS CompletedOrderQty
-        FROM DesignSales s
-        LEFT JOIN DesignOrderAgg o
-               ON o.DesignId = s.DesignId
-        LEFT JOIN DesignProcess p
-               ON p.DesignId = s.DesignId
-        ORDER BY s.DesignCode;
+        FROM ProductSales s
+        LEFT JOIN ProductOrderAgg o
+               ON o.ProductId = s.ProductId
+        LEFT JOIN ProductProcess pr
+               ON pr.ProductId = s.ProductId
+        ORDER BY
+              s.DesignCode,
+              s.ProductName;
     END
 
     ---------------------------------------------------------------------------
@@ -570,8 +688,8 @@ BEGIN
         SELECT
               pm.ProdSlipDate AS ProductionDate,
               ISNULL(NULLIF(LTRIM(RTRIM(loc.AccountName)), N''), N'-') AS Location,
-              CAST(ISNULL(pt.Quantity, 0) AS DECIMAL(18, 2)) AS ProducedQuantity,
-              CAST(ISNULL(pot.Quantity, 0) AS DECIMAL(18, 2)) AS RequiredQuantity
+              CAST(CASE WHEN ISNULL(pt.Quantity, 0) < 0 THEN 0 ELSE ISNULL(pt.Quantity, 0) END AS DECIMAL(18, 2)) AS ProducedQuantity,
+              CAST(CASE WHEN ISNULL(pot.Quantity, 0) < 0 THEN 0 ELSE ISNULL(pot.Quantity, 0) END AS DECIMAL(18, 2)) AS RequiredQuantity
         FROM ProdSlip_trn pt
         INNER JOIN ProdSlip_mas pm
                 ON pm.ProdSlipId = pt.ProdSlipId

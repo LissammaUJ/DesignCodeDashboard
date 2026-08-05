@@ -8,8 +8,8 @@ using Microsoft.Data.SqlClient;
 namespace DesignDashboard.Api.Repositories;
 
 /// <summary>
-/// Design cards — dbo.usp_DesignDashboard (@Action = GetCustomerSales).
-/// ProductName is returned by the SP (no separate enrichment).
+/// Product cards — dbo.usp_DesignDashboard (@Action = GetCustomerSales).
+/// One row per ProductId; design image/code repeated from Design master.
 /// </summary>
 public sealed class CustomerSalesRepository(
     ISqlConnectionFactory connectionFactory,
@@ -38,9 +38,10 @@ public sealed class CustomerSalesRepository(
             var result = await ExecuteCustomerSalesAsync(
                 connection, accountId, startDate, endDate, cancellationToken).ConfigureAwait(false);
 
+            // Distinct DesignIds — same thumbnail reused for every product under that design.
             var thumbs = await DesignThumbnailLoader.LoadDataUrlsAsync(
                 connectionFactory,
-                result.Select(r => r.DesignId).ToArray(),
+                result.Select(r => r.DesignId).Distinct().ToArray(),
                 logger,
                 cancellationToken).ConfigureAwait(false);
 
@@ -87,17 +88,22 @@ public sealed class CustomerSalesRepository(
         await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
         while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            var productOrd = reader.GetOrdinal("ProductName");
+            var productNameOrd = reader.GetOrdinal("ProductName");
             list.Add(new CustomerSalesDto
             {
                 DesignId = reader.GetInt32(reader.GetOrdinal("DesignId")),
-                DesignCode = reader.GetString(reader.GetOrdinal("DesignCode")).Trim(),
-                DesignName = reader.GetString(reader.GetOrdinal("DesignName")).Trim(),
-                ProductName = reader.IsDBNull(productOrd) ? string.Empty : reader.GetString(productOrd).Trim(),
-                TotalSalesQty = reader.GetDecimal(reader.GetOrdinal("TotalSalesQty")),
-                TotalSalesAmount = reader.GetDecimal(reader.GetOrdinal("TotalSalesAmount")),
-                PendingOrder = reader.GetDecimal(reader.GetOrdinal("PendingOrder")),
-                PendingProcess = reader.GetDecimal(reader.GetOrdinal("PendingProcess")),
+                DesignCode = Convert.ToString(reader["DesignCode"])?.Trim() ?? string.Empty,
+                DesignName = Convert.ToString(reader["DesignName"])?.Trim() ?? string.Empty,
+                ProductId = reader.GetInt32(reader.GetOrdinal("ProductId")),
+                ProductName = reader.IsDBNull(productNameOrd)
+                    ? "-"
+                    : (Convert.ToString(reader.GetValue(productNameOrd))?.Trim() is { Length: > 0 } name
+                        ? name
+                        : "-"),
+                TotalSalesQty = Convert.ToDecimal(reader["TotalSalesQty"]),
+                TotalSalesAmount = Convert.ToDecimal(reader["TotalSalesAmount"]),
+                PendingOrder = Convert.ToDecimal(reader["PendingOrder"]),
+                PendingProcess = Convert.ToDecimal(reader["PendingProcess"]),
                 ImageThumbnail = null
             });
         }

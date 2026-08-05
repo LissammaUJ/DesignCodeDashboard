@@ -73,6 +73,14 @@
     opacity: 0.88;
   }
 
+  &__customer-name {
+    margin: 0.35rem 0 0 !important;
+    font-size: 1.05rem !important;
+    font-weight: 700 !important;
+    opacity: 1 !important;
+    letter-spacing: -0.01em;
+  }
+
   &__hero-actions {
     display: flex;
     align-items: center;
@@ -113,6 +121,30 @@
     white-space: nowrap;
 
     i { font-size: 0.875rem; opacity: 0.9; }
+  }
+
+  &__user {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding-left: 0.35rem;
+  }
+
+  &__user-name {
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: $white;
+  }
+
+  @media (max-width: 768px) {
+    &__user-name {
+      display: none;
+    }
   }
 
   &__section {

@@ -1,5 +1,6 @@
 import {
   Component,
+  computed,
   DestroyRef,
   ElementRef,
   inject,
@@ -7,7 +8,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { DecimalPipe } from '@angular/common';
 import {
   AbstractControl,
@@ -19,16 +20,17 @@ import {
   ValidatorFn,
   Validators,
 } from '@angular/forms';
-import { debounceTime, merge } from 'rxjs';
+import { debounceTime, merge, startWith } from 'rxjs';
 import { ButtonModule } from 'primeng/button';
 import { DialogService, DynamicDialogModule } from 'primeng/dynamicdialog';
+import { MenuModule } from 'primeng/menu';
 import { PaginatorModule, PaginatorState } from 'primeng/paginator';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { SelectModule } from 'primeng/select';
 import { SkeletonModule } from 'primeng/skeleton';
 import { ToastModule } from 'primeng/toast';
 import { TooltipModule } from 'primeng/tooltip';
-import { MessageService } from 'primeng/api';
+import { MenuItem, MessageService } from 'primeng/api';
 import { PAGE_SIZE_OPTIONS } from '../../core/constants/design.constants';
 import {
   DashboardKpiSummary,
@@ -44,6 +46,7 @@ import { DesignCardComponent } from '../../components/design-card/design-card.co
 import { DesignDetailDialogComponent } from '../../components/design-detail-dialog/design-detail-dialog.component';
 import { KpiSummaryComponent } from '../../components/kpi-summary/kpi-summary.component';
 import { environment } from '../../environments/environment';
+import { AuthService } from '../../services/auth.service';
 import { CustomerApiService } from '../../services/customer-api.service';
 import { CustomerSalesApiService } from '../../services/customer-sales-api.service';
 import { DashboardApiService } from '../../services/dashboard-api.service';
@@ -86,6 +89,7 @@ function dateRangeValidator(): ValidatorFn {
     FormsModule,
     ReactiveFormsModule,
     ButtonModule,
+    MenuModule,
     SelectModule,
     PaginatorModule,
     ProgressSpinnerModule,
@@ -103,6 +107,7 @@ function dateRangeValidator(): ValidatorFn {
 })
 export class DesignDashboardComponent implements OnInit {
   private readonly fb = inject(FormBuilder);
+  private readonly auth = inject(AuthService);
   private readonly customerApi = inject(CustomerApiService);
   private readonly customerSalesApi = inject(CustomerSalesApiService);
   private readonly dashboardApi = inject(DashboardApiService);
@@ -152,7 +157,6 @@ export class DesignDashboardComponent implements OnInit {
     { label: 'Design Code', value: 'designCode' },
     { label: 'Created Date', value: 'createdDate' },
     { label: 'Category', value: 'category' },
-    { label: 'Status', value: 'status' },
     { label: 'Sales Quantity', value: 'salesQuantity' },
   ];
 
@@ -167,7 +171,49 @@ export class DesignDashboardComponent implements OnInit {
   private observer: IntersectionObserver | null = null;
   private clockTimer: ReturnType<typeof setInterval> | null = null;
 
+  private readonly customerAccountIdValue = toSignal(
+    this.filterForm.get('customerAccountId')!.valueChanges.pipe(
+      startWith(this.filterForm.get('customerAccountId')!.value)
+    ),
+    { initialValue: null as unknown }
+  );
+
+  /** Selected customer label shown in the page hero. */
+  readonly selectedCustomerName = computed(() => {
+    const selected = this.customerAccountIdValue();
+    const id = resolveAccountId(selected);
+    if (id == null) return '';
+    const match = (this.filterOptions()['customers'] ?? []).find(
+      (o) => String(o.value) === String(id) || String(o.value) === String(selected)
+    );
+    return match?.label?.trim() || '';
+  });
+
+  readonly authUsername = computed(() => this.auth.getUsername()?.trim() || 'User');
+
+  userMenuItems: MenuItem[] = [];
+
   ngOnInit(): void {
+    const user = this.auth.getUsername()?.trim() || 'User';
+    this.userMenuItems = [
+      {
+        label: 'Account',
+        items: [
+          {
+            label: user,
+            icon: 'pi pi-id-card',
+            disabled: true,
+          },
+          { separator: true },
+          {
+            label: 'Logout',
+            icon: 'pi pi-sign-out',
+            command: () => this.onLogout(),
+          },
+        ],
+      },
+    ];
+
     // Default date range so the customer dropdown can load after dates exist.
     this.filterForm.patchValue(
       {
@@ -184,48 +230,87 @@ export class DesignDashboardComponent implements OnInit {
   }
 
   onSearch(): void {
-    if (this.filterForm.invalid) {
-      this.filterForm.markAllAsTouched();
-      return;
-    }
+    try {
+      if (this.filterForm.invalid) {
+        this.filterForm.markAllAsTouched();
+        this.messageService.add({
+          severity: 'warn',
+          summary: 'Filters required',
+          detail: 'Select customer, start date, and end date before searching.',
+        });
+        return;
+      }
 
-    const request = this.buildApiFilter();
-    if (!request) {
+      const request = this.buildApiFilter();
+      if (!request) {
+        this.messageService.add({
+          severity: 'error',
+          summary: 'Invalid filter',
+          detail: 'Select a customer and a valid date range before searching.',
+        });
+        return;
+      }
+
+      this.currentPage.set(1);
+      this.designs.set([]);
+      this.hasSearched.set(true);
+      this.designsError.set(null);
+      // KPIs + product cards only — never call /api/dashboard/charts (removed).
+      this.fetchKpis(request);
+      this.fetchDesigns(request);
+    } catch (err) {
+      console.error('[onSearch]', err);
       this.messageService.add({
         severity: 'error',
-        summary: 'Invalid filter',
-        detail: 'Select a customer and a valid date range before searching.',
+        summary: 'Search failed',
+        detail: err instanceof Error ? err.message : 'Unexpected search error.',
       });
-      return;
     }
-
-    this.currentPage.set(1);
-    this.designs.set([]);
-    this.hasSearched.set(true);
-    this.designsError.set(null);
-    this.fetchKpis(request);
-    this.fetchDesigns(request);
   }
 
   onRefresh(): void {
-    if (this.filterForm.invalid) {
-      this.filterForm.markAllAsTouched();
+    try {
+      if (this.filterForm.invalid) {
+        this.filterForm.markAllAsTouched();
+        this.messageService.add({
+          severity: 'warn',
+          summary: 'Filters required',
+          detail: 'Select customer and date range before refreshing.',
+        });
+        return;
+      }
+
+      const request = this.buildApiFilter();
+      if (!request) {
+        this.messageService.add({
+          severity: 'warn',
+          summary: 'Filters required',
+          detail: 'Select customer and date range, then Search.',
+        });
+        return;
+      }
+
+      this.currentPage.set(1);
+      this.designs.set([]);
+      this.hasSearched.set(true);
+      this.designsError.set(null);
+      this.currentDateTime.set(this.formatDateTime(new Date()));
+      // KPIs + product cards only — never call /api/dashboard/charts (removed).
+      this.fetchKpis(request);
+      this.fetchDesigns(request);
       this.messageService.add({
-        severity: 'warn',
-        summary: 'Filters required',
-        detail: 'Select customer and date range before refreshing.',
+        severity: 'info',
+        summary: 'Refreshed',
+        detail: 'Dashboard data updated.',
       });
-      return;
+    } catch (err) {
+      console.error('[onRefresh]', err);
+      this.messageService.add({
+        severity: 'error',
+        summary: 'Refresh failed',
+        detail: err instanceof Error ? err.message : 'Unexpected refresh error.',
+      });
     }
-    this.currentPage.set(1);
-    this.designs.set([]);
-    this.loadDashboard();
-    this.currentDateTime.set(this.formatDateTime(new Date()));
-    this.messageService.add({
-      severity: 'info',
-      summary: 'Refreshed',
-      detail: 'Dashboard data updated.',
-    });
   }
 
   onReset(): void {
@@ -293,6 +378,10 @@ export class DesignDashboardComponent implements OnInit {
     this.filterCollapsed.update((v) => !v);
   }
 
+  onLogout(): void {
+    this.auth.logout(true);
+  }
+
   /** Reload customer dropdown whenever Start/End dates change. */
   private setupCustomerReloadOnDateChange(): void {
     const startCtrl = this.filterForm.get('startDate');
@@ -356,21 +445,6 @@ export class DesignDashboardComponent implements OnInit {
     });
   }
 
-  private loadDashboard(): void {
-    const request = this.buildApiFilter();
-    if (!request) {
-      this.messageService.add({
-        severity: 'warn',
-        summary: 'Filters required',
-        detail: 'Select customer and date range, then Search.',
-      });
-      return;
-    }
-
-    this.fetchKpis(request);
-    this.fetchDesigns(request);
-  }
-
   private fetchKpis(filter: DesignFilterRequest): void {
     this.kpiLoading.set(true);
     this.dashboardApi.getSummary(filter).subscribe({
@@ -395,11 +469,47 @@ export class DesignDashboardComponent implements OnInit {
     this.customerSalesApi.getCustomerSales(filter).subscribe({
       next: (dtos) => {
         const list = Array.isArray(dtos) ? dtos : [];
+        const api257 = list.find((d) => Number(d.productId) === 257);
+        console.log('[customer-sales API product 257]', {
+          found: !!api257,
+          pendingOrder: api257?.pendingOrder,
+          pendingProcess: api257?.pendingProcess,
+          pendingProcessEquals1190: api257 != null && Number(api257.pendingProcess) === 1190,
+          raw: api257,
+        });
+
         this.designsError.set(null);
         this.allDesigns = list.map((dto) => mapCustomerSalesToListItem(dto));
+
+        const mapped257 = this.allDesigns.find((c) => c.productId === 257);
+        console.log('[customer-sales mapped product 257]', {
+          found: !!mapped257,
+          pendingOrder: mapped257?.pendingOrder,
+          pendingOrderQuantity: mapped257?.pendingOrderQuantity,
+          inProcess: mapped257?.inProcess,
+          inProcessingQuantity: mapped257?.inProcessingQuantity,
+          inProcessEquals1190: mapped257?.inProcess === 1190,
+        });
+
         this.totalRecords.set(this.allDesigns.length);
         this.currentPage.set(1);
         this.applyPage(false);
+
+        const render257 = this.designs().find((c) => c.productId === 257);
+        console.log('[dashboard list before render product 257]', {
+          found: !!render257,
+          pendingOrder: render257?.pendingOrder,
+          pendingOrderQuantity: render257?.pendingOrderQuantity,
+          inProcess: render257?.inProcess,
+          inProcessingQuantity: render257?.inProcessingQuantity,
+          inProcessEquals1190: render257?.inProcess === 1190,
+          bundleHint: typeof document !== 'undefined'
+            ? Array.from(document.scripts)
+                .map((s) => s.src)
+                .filter((src) => /main[^/]*\.js/i.test(src))
+            : [],
+        });
+
         this.loading.set(false);
 
         if (list.length === 0) {

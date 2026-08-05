@@ -5,7 +5,7 @@ export type SortOrder = 'asc' | 'desc';
 export type ViewMode = 'card' | 'table';
 
 export interface DesignSummary {
-  totalDesigns: number;
+  totalProducts: number;
   approved: number;
   pending: number;
   rejected: number;

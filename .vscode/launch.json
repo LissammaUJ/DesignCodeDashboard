@@ -3,10 +3,10 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Design Dashboard (port 5000)",
+      "name": "Design Dashboard (port 100/5000)",
       "type": "chrome",
       "request": "launch",
-      "url": "http://localhost:5000/dashboard"
+      "url": "http://localhost:100/swagger"
     },
     {
       "name": "ng serve",

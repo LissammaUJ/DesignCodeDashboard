@@ -21,17 +21,20 @@ public sealed class DashboardRepository(
     {
         var sales = await ExecuteCustomerwiseSalesAsync(filter, cancellationToken).ConfigureAwait(false);
 
+        // Product-wise KPIs (one row per ProductId from GetSummary). Never count by DesignId only.
+        static decimal NonNeg(decimal v) => v < 0 ? 0 : v;
+
         return new DashboardSummaryDto
         {
-            TotalDesigns = sales.Select(s => s.DesignId).Distinct().Count(),
-            TotalOrderQty = sales.Sum(s => s.TotalOrderQty),
-            TotalOrderSalesValue = sales.Sum(s => s.TotalOrderAmount),
-            TotalSalesQty = sales.Sum(s => s.TotalSalesQty),
-            TotalSalesValue = sales.Sum(s => s.TotalSalesAmount),
-            PendingOrderValue = sales.Sum(s => s.PendingOrderValue),
-            PendingOrders = sales.Sum(s => s.PendingOrder),
-            InProcessing = sales.Sum(s => s.PendingProcess),
-            CompletedOrders = sales.Sum(s => s.CompletedOrderQty)
+            TotalProducts = sales.Select(s => s.ProductId).Distinct().Count(),
+            TotalOrderQty = sales.Sum(s => NonNeg(s.TotalOrderQty)),
+            TotalOrderSalesValue = sales.Sum(s => NonNeg(s.TotalOrderAmount)),
+            TotalSalesQty = sales.Sum(s => NonNeg(s.TotalSalesQty)),
+            TotalSalesValue = sales.Sum(s => NonNeg(s.TotalSalesAmount)),
+            PendingOrderValue = sales.Sum(s => NonNeg(s.PendingOrderValue)),
+            PendingOrders = sales.Sum(s => NonNeg(s.PendingOrder)),
+            InProcessing = sales.Sum(s => NonNeg(s.PendingProcess)),
+            CompletedOrders = sales.Sum(s => NonNeg(s.CompletedOrderQty))
         };
     }
 
@@ -61,6 +64,7 @@ public sealed class DashboardRepository(
             list.Add(new DashboardSummarySalesRow
             {
                 DesignId = reader.GetInt32(reader.GetOrdinal("DesignId")),
+                ProductId = reader.GetInt32(reader.GetOrdinal("ProductId")),
                 DesignCode = reader.GetString(reader.GetOrdinal("DesignCode")),
                 DesignName = reader.GetString(reader.GetOrdinal("DesignName")),
                 TotalSalesQty = reader.GetDecimal(reader.GetOrdinal("TotalSalesQty")),
@@ -89,6 +93,7 @@ public sealed class DashboardRepository(
     private sealed class DashboardSummarySalesRow
     {
         public int DesignId { get; set; }
+        public int ProductId { get; set; }
         public string DesignCode { get; set; } = string.Empty;
         public string DesignName { get; set; } = string.Empty;
         public decimal TotalSalesQty { get; set; }

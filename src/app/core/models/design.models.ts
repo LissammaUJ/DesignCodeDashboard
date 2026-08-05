@@ -31,6 +31,8 @@ export interface CardKpiItem {
 
 export interface DesignListItem {
   designID: number;
+  /** Unique card identity (Product.ProductId). */
+  productId: number;
   designCode: string;
   designName: string;
   productName: string;
@@ -45,9 +47,14 @@ export interface DesignListItem {
   makingCharge: number;
   salesQuantity: number;
   totalSalesValue: number;
+  /** Pending order qty (from API pendingOrder). */
   pendingOrderQuantity: number;
   pendingOrderValue: number;
+  /** In-process qty (from API pendingProcess). */
   inProcessingQuantity: number;
+  /** Aliases matching API field names (used by card KPIs). */
+  pendingOrder: number;
+  inProcess: number;
   completedOrderQuantity: number;
   currentStock: number;
   availableStock: number;
@@ -125,6 +132,8 @@ export interface DesignInventoryInfo {
 }
 
 export interface DesignDetail extends DesignListItem {
+  /** Selected / bill customer name for the detail header. */
+  customerName: string;
   general: DesignGeneralInfo;
   sales: DesignSalesInfo;
   orders: DesignOrderDetail[];

@@ -149,6 +149,7 @@ export class DesignDetailDialogComponent implements OnInit {
 
         this.detail.set({
           ...mapped,
+          customerName: mapped.customerName || detail.customerName || detail.accountDetails?.accountName || '-',
           general: {
             ...mapped.general,
             productName: mapped.general.productName || '-',
@@ -289,10 +290,39 @@ export class DesignDetailDialogComponent implements OnInit {
       return;
     }
 
-    const link = document.createElement('a');
-    link.href = src;
-    link.download = `${d.designCode || 'design'}.jpg`;
-    link.click();
+    try {
+      const link = document.createElement('a');
+      link.download = `${d.designCode || 'design'}.jpg`;
+      if (src.startsWith('data:')) {
+        const blob = this.dataUrlToBlob(src);
+        const objectUrl = URL.createObjectURL(blob);
+        link.href = objectUrl;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+      } else {
+        link.href = src;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.click();
+      }
+    } catch {
+      this.messageService.add({
+        severity: 'error',
+        summary: 'Download',
+        detail: 'Unable to download image.',
+      });
+    }
+  }
+
+  private dataUrlToBlob(dataUrl: string): Blob {
+    const [header, data] = dataUrl.split(',');
+    const mime = /data:(.*?);/.exec(header)?.[1] || 'image/jpeg';
+    const binary = atob(data);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new Blob([bytes], { type: mime });
   }
 
   printDetail(): void {

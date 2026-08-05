@@ -1,5 +1,6 @@
 using DesignDashboard.Api.DTOs;
 using DesignDashboard.Api.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DesignDashboard.Api.Controllers;
@@ -7,6 +8,7 @@ namespace DesignDashboard.Api.Controllers;
 /// <summary>
 /// Separate read-only endpoints for design detail tabs (Production / Inventory).
 /// </summary>
+[Authorize]
 [ApiController]
 [Route("api/designs/{designId:int}")]
 [Produces("application/json")]

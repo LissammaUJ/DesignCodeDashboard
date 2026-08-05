@@ -1,5 +1,9 @@
 @use './styles/variables' as *;
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 @import 'primeicons/primeicons.css';
 
 @import url('https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&display=swap');

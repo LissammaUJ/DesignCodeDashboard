@@ -1,17 +1,27 @@
+using System.Text.Json.Serialization;
+
 namespace DesignDashboard.Api.DTOs;
 
-/// <summary>Maps company sales SQL result columns for Angular (camelCase JSON).</summary>
+/// <summary>
+/// One dashboard card = one product. DesignId/Code/Name/image may repeat across rows.
+/// </summary>
 public class CustomerSalesDto
 {
     public int DesignId { get; set; }
     public string DesignCode { get; set; } = string.Empty;
     public string DesignName { get; set; } = string.Empty;
-    /// <summary>Primary Product.ProductName for the design (reuse existing Product table).</summary>
+    /// <summary>Unique card key — Product.ProductId.</summary>
+    public int ProductId { get; set; }
     public string ProductName { get; set; } = string.Empty;
     public decimal TotalSalesQty { get; set; }
     public decimal TotalSalesAmount { get; set; }
+
+    [JsonPropertyName("pendingOrder")]
     public decimal PendingOrder { get; set; }
+
+    [JsonPropertyName("pendingProcess")]
     public decimal PendingProcess { get; set; }
-    /// <summary>ItemDesign.ImgThumbData as data:image/jpeg;base64,... (batched after sales).</summary>
+
+    /// <summary>ItemDesign.ImgThumbData as data:image/jpeg;base64,... (same for all products of a design).</summary>
     public string? ImageThumbnail { get; set; }
 }

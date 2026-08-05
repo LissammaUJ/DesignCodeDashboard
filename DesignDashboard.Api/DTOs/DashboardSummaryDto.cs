@@ -2,7 +2,8 @@ namespace DesignDashboard.Api.DTOs;
 
 public class DashboardSummaryDto
 {
-    public int TotalDesigns { get; set; }
+    /// <summary>COUNT(DISTINCT ProductId) — product-wise cards.</summary>
+    public int TotalProducts { get; set; }
     public decimal TotalOrderQty { get; set; }
     public decimal TotalOrderSalesValue { get; set; }
     public decimal TotalSalesQty { get; set; }

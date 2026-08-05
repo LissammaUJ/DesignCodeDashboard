@@ -69,3 +69,16 @@ export function displayValue(value: string | number | null | undefined, fallback
   if (typeof value === 'string' && value.trim() === '') return fallback;
   return String(value);
 }
+
+/** Normalize empty / placeholder material (and similar) values for UI. */
+export function displayDash(value: string | null | undefined, fallback = '-'): string {
+  const text = value?.trim() ?? '';
+  if (!text) return fallback;
+  if (text === '?' || text === '-' || text === '—' || text.toLowerCase() === 'null' || text.toLowerCase() === 'undefined') {
+    return fallback;
+  }
+  if (text.toLowerCase() === 'no material available' || text.toLowerCase() === 'no data available') {
+    return fallback;
+  }
+  return text;
+}

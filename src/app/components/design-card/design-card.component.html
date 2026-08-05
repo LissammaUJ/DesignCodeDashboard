@@ -11,9 +11,9 @@
   <p-card styleClass="design-card">
     <ng-template #header>
       <div class="design-card__image">
-        @if (design().imageUrl) {
+        @if (card().imageUrl) {
           <img
-            [src]="design().imageUrl"
+            [src]="card().imageUrl"
             [alt]="designCode()"
             loading="lazy"
             decoding="async"
@@ -24,13 +24,6 @@
             <span>No Image</span>
           </div>
         }
-        <div class="design-card__badge">
-          <p-tag
-            [value]="design().approvalStatus"
-            [severity]="getApprovalSeverity(design().approvalStatus)"
-            [attr.aria-label]="'Status: ' + design().approvalStatus"
-          />
-        </div>
       </div>
     </ng-template>
 
@@ -49,21 +42,57 @@
       </header>
 
       <div class="design-card__kpis" role="group" aria-label="Business KPIs">
-        @for (kpi of kpiItems(); track kpi.label) {
-          <div
-            class="kpi-tile"
-            [class]="kpi.colorClass"
-            [pTooltip]="kpi.tooltip"
-            tooltipPosition="top"
-            [attr.aria-label]="kpi.tooltip"
-          >
-            <div class="kpi-tile__top">
-              <i class="kpi-tile__icon" [class]="kpi.icon" aria-hidden="true"></i>
-              <span class="kpi-tile__label">{{ kpi.label }}</span>
-            </div>
-            <strong class="kpi-tile__value">{{ kpi.value }}</strong>
+        <div
+          class="kpi-tile kpi-tile--blue"
+          [pTooltip]="'Total Sales Quantity: ' + (salesQtyDisplay() | number: '1.0-2')"
+          tooltipPosition="top"
+        >
+          <div class="kpi-tile__top">
+            <i class="kpi-tile__icon pi pi-box" aria-hidden="true"></i>
+            <span class="kpi-tile__label">Sales Qty</span>
           </div>
-        }
+          <strong class="kpi-tile__value">{{ salesQtyDisplay() | number: '1.0-2' }}</strong>
+        </div>
+
+        <div
+          class="kpi-tile kpi-tile--purple"
+          [pTooltip]="'Total Sales Value: ' + formatCompactCurrency(salesValueDisplay())"
+          tooltipPosition="top"
+        >
+          <div class="kpi-tile__top">
+            <i class="kpi-tile__icon pi pi-wallet" aria-hidden="true"></i>
+            <span class="kpi-tile__label">Sales Value</span>
+          </div>
+          <strong class="kpi-tile__value">{{ formatCompactCurrency(salesValueDisplay()) }}</strong>
+        </div>
+
+        <div
+          class="kpi-tile kpi-tile--orange"
+          [pTooltip]="'Pending Orders: ' + (pendingOrderDisplay() | number: '1.0-2')"
+          tooltipPosition="top"
+        >
+          <div class="kpi-tile__top">
+            <i class="kpi-tile__icon pi pi-clipboard" aria-hidden="true"></i>
+            <span class="kpi-tile__label">Pending Orders</span>
+          </div>
+          <strong class="kpi-tile__value">
+            {{ pendingOrderDisplay() | number: '1.0-2' }}
+          </strong>
+        </div>
+
+        <div
+          class="kpi-tile kpi-tile--green"
+          [pTooltip]="'In Process Quantity: ' + (inProcessDisplay() | number: '1.0-2')"
+          tooltipPosition="top"
+        >
+          <div class="kpi-tile__top">
+            <i class="kpi-tile__icon pi pi-cog" aria-hidden="true"></i>
+            <span class="kpi-tile__label">In Process</span>
+          </div>
+          <strong class="kpi-tile__value">
+            {{ inProcessDisplay() | number: '1.0-2' }}
+          </strong>
+        </div>
       </div>
 
       <div class="design-card__footer">

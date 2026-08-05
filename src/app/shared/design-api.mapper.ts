@@ -14,6 +14,7 @@ import {
   SortField,
   SortOrder,
 } from '../core/models/design.models';
+import { displayDash } from './api.utils';
 
 const NO_DATA = 'No Data Available';
 
@@ -25,14 +26,37 @@ export function mapCustomersToOptions(customers: CustomerDto[]): SelectOption[] 
   }));
 }
 
-/** Maps GET /api/customer-sales → design card model. */
+/** Coerce API numeric fields (number | string | PascalCase) to a finite quantity. */
+function toQty(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
+/** Maps GET /api/customer-sales → one card per product. */
 export function mapCustomerSalesToListItem(dto: CustomerSalesDto): DesignListItem {
+  const row = dto as CustomerSalesDto & Record<string, unknown>;
   const image = toCardImageUrl(dto.imageThumbnail);
-  return {
-    designID: dto.designId,
+
+  // Prefer typed DTO fields first (HttpClient JSON), then PascalCase fallbacks.
+  // pendingOrder  → pendingOrder + pendingOrderQuantity
+  // pendingProcess → inProcess + inProcessingQuantity
+  const apiPendingOrder = dto.pendingOrder ?? row['pendingOrder'] ?? row['PendingOrder'];
+  const apiPendingProcess = dto.pendingProcess ?? row['pendingProcess'] ?? row['PendingProcess'];
+  const pendingOrder = toQty(apiPendingOrder);
+  const inProcess = toQty(apiPendingProcess);
+
+  const card: DesignListItem = {
+    designID: toQty(dto.designId ?? row['designId'] ?? row['DesignId']),
+    productId: toQty(dto.productId ?? row['productId'] ?? row['ProductId']),
     designCode: dto.designCode ?? '',
     designName: dto.designName ?? '',
-    productName: dto.productName?.trim() || '',
+    productName: dto.productName?.trim() || '-',
     customerAccount: '',
     category: '',
     subCategory: '',
@@ -42,11 +66,13 @@ export function mapCustomerSalesToListItem(dto: CustomerSalesDto): DesignListIte
     netWeight: 0,
     stoneWeight: 0,
     makingCharge: 0,
-    salesQuantity: Number(dto.totalSalesQty) || 0,
-    totalSalesValue: Number(dto.totalSalesAmount) || 0,
-    pendingOrderQuantity: Number(dto.pendingOrder) || 0,
+    salesQuantity: toQty(dto.totalSalesQty ?? row['totalSalesQty'] ?? row['TotalSalesQty']),
+    totalSalesValue: toQty(dto.totalSalesAmount ?? row['totalSalesAmount'] ?? row['TotalSalesAmount']),
+    pendingOrder,
+    pendingOrderQuantity: pendingOrder,
     pendingOrderValue: 0,
-    inProcessingQuantity: Number(dto.pendingProcess) || 0,
+    inProcess,
+    inProcessingQuantity: inProcess,
     completedOrderQuantity: 0,
     currentStock: 0,
     availableStock: 0,
@@ -60,6 +86,26 @@ export function mapCustomerSalesToListItem(dto: CustomerSalesDto): DesignListIte
     isFavorite: false,
     isPinned: false,
   };
+
+  if (card.productId === 257) {
+    console.log('[mapCustomerSalesToListItem product 257]', {
+      dtoKeys: Object.keys(row),
+      api: {
+        pendingOrder: apiPendingOrder,
+        pendingProcess: apiPendingProcess,
+        pendingProcessEquals1190: apiPendingProcess === 1190 || Number(apiPendingProcess) === 1190,
+      },
+      mapped: {
+        pendingOrder: card.pendingOrder,
+        pendingOrderQuantity: card.pendingOrderQuantity,
+        inProcess: card.inProcess,
+        inProcessingQuantity: card.inProcessingQuantity,
+        inProcessEquals1190: card.inProcess === 1190,
+      },
+    });
+  }
+
+  return card;
 }
 
 function toCardImageUrl(thumbnail: string | null | undefined): string {
@@ -93,7 +139,7 @@ function kpi(
 export function mapDashboardSummary(dto: DashboardSummaryDto): DashboardKpiSummary {
   return {
     metrics: [
-      kpi('totalDesigns', 'Total Designs', dto.totalDesigns, 'pi pi-box', 'linear-gradient(135deg, #2563eb, #1d4ed8)'),
+      kpi('totalProducts', 'Total Products', dto.totalProducts, 'pi pi-box', 'linear-gradient(135deg, #2563eb, #1d4ed8)'),
       kpi(
         'totalOrderQty',
         'Total Order Quantity',
@@ -215,22 +261,27 @@ function firstProduct(products: ProductDetailDto[] | undefined): ProductDetailDt
 export function mapDesignDetail(dto: DesignDetailDto): DesignDetail {
   const image = dto.imageThumbnail?.trim() || '';
   const product = firstProduct(dto.productDetails);
-  const category = dto.categoryName?.trim() || NO_DATA;
-  const productName = product?.productName?.trim() || NO_DATA;
+  const category = displayDash(dto.categoryName, NO_DATA);
+  const productName = displayDash(product?.productName, NO_DATA);
   const netWt = product?.netWt != null ? Number(product.netWt) : null;
-  const material = product?.composition?.trim() || 'No Material Available';
+  const material = displayDash(product?.composition, '-');
   const currentStock = Number(dto.inventory?.[0]?.currentStock) || 0;
   const status = product?.active === false ? ('Inactive' as const) : ('Approved' as const);
+  const customerName = displayDash(dto.customerName ?? dto.accountDetails?.accountName, '-');
+
+  const pendingOrder = toQty(dto.pendingOrders);
+  const inProcess = toQty(dto.pendingProcess);
 
   const base: DesignListItem = {
     designID: dto.designId,
+    productId: Number(product?.productId) || 0,
     designCode: dto.designCode ?? '',
     designName: dto.designName ?? '',
     productName: productName === NO_DATA ? '' : productName,
-    customerAccount: '',
+    customerAccount: customerName === '-' ? '' : customerName,
     category: category === NO_DATA ? '' : category,
     subCategory: '',
-    material: product?.composition?.trim() || '',
+    material,
     purity: '',
     grossWeight: 0,
     netWeight: netWt ?? 0,
@@ -238,9 +289,11 @@ export function mapDesignDetail(dto: DesignDetailDto): DesignDetail {
     makingCharge: 0,
     salesQuantity: Number(dto.salesQty) || 0,
     totalSalesValue: Number(dto.salesValue) || 0,
-    pendingOrderQuantity: Number(dto.pendingOrders) || 0,
+    pendingOrderQuantity: pendingOrder,
     pendingOrderValue: 0,
-    inProcessingQuantity: Number(dto.pendingProcess) || 0,
+    inProcessingQuantity: inProcess,
+    pendingOrder,
+    inProcess,
     completedOrderQuantity: 0,
     currentStock,
     availableStock: 0,
@@ -265,6 +318,7 @@ export function mapDesignDetail(dto: DesignDetailDto): DesignDetail {
 
   return {
     ...base,
+    customerName,
     general: {
       productName,
       category,

@@ -1,0 +1,109 @@
+<p-toast position="top-right" />
+
+<div
+  class="login-page"
+  [class.login-page--light]="isLightTheme()"
+  [class.login-page--dark]="isDarkTheme()"
+>
+  <div class="login-page__aurora" aria-hidden="true"></div>
+  <div class="login-page__grid" aria-hidden="true"></div>
+
+  <button
+    type="button"
+    class="login-page__theme-toggle"
+    (click)="toggleTheme()"
+    [attr.aria-label]="isDarkTheme() ? 'Switch to light mode' : 'Switch to dark mode'"
+    pTooltip="Toggle theme"
+    tooltipPosition="left"
+  >
+    <i [class]="isDarkTheme() ? 'pi pi-sun' : 'pi pi-moon'"></i>
+  </button>
+
+  <div class="login-page__content">
+    <section class="login-card" role="main" aria-labelledby="login-title">
+      <header class="login-card__header">
+        <div class="login-card__mark" aria-hidden="true">
+          <i class="pi pi-chart-bar"></i>
+        </div>
+        <h1 id="login-title" class="login-card__title">Design Code Dashboard</h1>
+        <p class="login-card__subtitle">Secure access to the analytics platform</p>
+      </header>
+
+      <form class="login-card__form" [formGroup]="form" (ngSubmit)="onSubmit()" novalidate>
+        <div class="login-field">
+          <label for="username">Username</label>
+          <p-iconfield iconPosition="left" class="w-full">
+            <p-inputicon styleClass="pi pi-user" />
+            <input
+              pInputText
+              id="username"
+              formControlName="username"
+              autocomplete="username"
+              placeholder="Enter username"
+              class="w-full"
+              [attr.aria-invalid]="form.controls.username.invalid && form.controls.username.touched"
+            />
+          </p-iconfield>
+          @if (form.controls.username.invalid && form.controls.username.touched) {
+            <small class="login-field__error" role="alert">Username is required</small>
+          }
+        </div>
+
+        <div class="login-field">
+          <label for="password">Password</label>
+          <p-password
+            inputId="password"
+            formControlName="password"
+            [feedback]="false"
+            [toggleMask]="true"
+            styleClass="w-full"
+            inputStyleClass="w-full"
+            placeholder="Enter password"
+            autocomplete="current-password"
+          />
+          @if (form.controls.password.invalid && form.controls.password.touched) {
+            <small class="login-field__error" role="alert">Password is required</small>
+          }
+        </div>
+
+        <div class="login-card__row">
+          <div class="login-card__remember">
+            <p-checkbox formControlName="rememberMe" [binary]="true" inputId="rememberMe" />
+            <label for="rememberMe">Remember me</label>
+          </div>
+        </div>
+
+        @if (error()) {
+          <div class="login-card__alert" role="alert">{{ error() }}</div>
+        }
+
+        <p-button
+          type="submit"
+          label="Login"
+          icon="pi pi-sign-in"
+          styleClass="w-full login-card__submit"
+          [loading]="loading()"
+          [disabled]="loading()"
+          ariaLabel="Login"
+        />
+      </form>
+
+      <div class="login-card__trust" aria-label="Security notices">
+        <span><i class="pi pi-shield" aria-hidden="true"></i> Protected Access</span>
+        <span><i class="pi pi-lock" aria-hidden="true"></i> JWT Secured Authentication</span>
+        <span><i class="pi pi-verified" aria-hidden="true"></i> Authorized Users Only</span>
+      </div>
+    </section>
+
+    <footer class="login-page__footer">Version 1.0.0</footer>
+  </div>
+
+  @if (loading()) {
+    <div class="login-overlay" role="status" aria-live="polite" aria-label="Authenticating">
+      <div class="login-overlay__panel">
+        <p-progressSpinner strokeWidth="3" [style]="{ width: '42px', height: '42px' }" />
+        <p>Authenticating…</p>
+      </div>
+    </div>
+  }
+</div>

@@ -91,7 +91,8 @@
             type="submit"
             label="Search"
             icon="pi pi-search"
-            [loading]="loading()"
+            [loading]="searching()"
+            [disabled]="searching()"
             ariaLabel="Search designs"
           />
           <p-button
@@ -100,6 +101,7 @@
             icon="pi pi-refresh"
             severity="secondary"
             [outlined]="true"
+            [disabled]="searching()"
             ariaLabel="Reset filters"
             (onClick)="onReset()"
           />

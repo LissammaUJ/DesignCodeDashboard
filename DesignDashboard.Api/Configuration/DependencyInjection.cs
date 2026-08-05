@@ -10,6 +10,10 @@ public static class DependencyInjection
     {
         services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>();
 
+        // Auth — JwtService is singleton-safe; AuthService can later become DB-backed.
+        services.AddSingleton<IJwtService, JwtService>();
+        services.AddScoped<IAuthService, AuthService>();
+
         services.AddScoped<ICustomerRepository, CustomerRepository>();
         services.AddScoped<IDesignRepository, DesignRepository>();
         services.AddScoped<IDashboardRepository, DashboardRepository>();

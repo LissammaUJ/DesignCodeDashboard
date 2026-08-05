@@ -9,7 +9,11 @@
       </div>
       <div>
         <h1>Design Code Dashboard</h1>
-        <p>Manage and view design codes across your enterprise</p>
+        @if (selectedCustomerName()) {
+          <p class="erp-dashboard__customer-name">{{ selectedCustomerName() }}</p>
+        } @else {
+          <p>Select a customer, then Search to load products</p>
+        }
       </div>
     </div>
     <div class="erp-dashboard__hero-actions">
@@ -17,6 +21,27 @@
         <i class="pi pi-calendar" aria-hidden="true"></i>
         {{ currentDateTime() }}
       </span>
+      <p-button
+        icon="pi pi-filter"
+        label="Filters"
+        [outlined]="true"
+        severity="contrast"
+        ariaLabel="Toggle filters"
+        pTooltip="Show or hide filters"
+        tooltipPosition="bottom"
+        (onClick)="toggleFilterCollapse()"
+      />
+      <p-button
+        icon="pi pi-search"
+        label="Search"
+        [outlined]="true"
+        severity="contrast"
+        [loading]="loading() || kpiLoading()"
+        ariaLabel="Search designs"
+        pTooltip="Search with current filters"
+        tooltipPosition="bottom"
+        (onClick)="onSearch()"
+      />
       <p-button
         icon="pi pi-refresh"
         label="Refresh"
@@ -28,6 +53,23 @@
         tooltipPosition="bottom"
         (onClick)="onRefresh()"
       />
+      <div class="erp-dashboard__user">
+        <span class="erp-dashboard__user-name" [attr.title]="authUsername()">
+          {{ authUsername() }}
+        </span>
+        <p-button
+          type="button"
+          icon="pi pi-user"
+          [rounded]="true"
+          [outlined]="true"
+          severity="contrast"
+          ariaLabel="Account menu"
+          pTooltip="Account"
+          tooltipPosition="bottom"
+          (onClick)="userMenu.toggle($event)"
+        />
+        <p-menu #userMenu [model]="userMenuItems" [popup]="true" appendTo="body" styleClass="erp-user-menu" />
+      </div>
     </div>
   </header>
 
@@ -44,7 +86,8 @@
     <app-advanced-filter
       [filterForm]="filterForm"
       [options]="filterOptions()"
-      [loading]="loading() || customersLoading()"
+      [loading]="customersLoading()"
+      [searching]="loading() || kpiLoading()"
       [collapsed]="filterCollapsed()"
       (search)="onSearch()"
       (reset)="onReset()"
@@ -58,7 +101,7 @@
     <main class="erp-dashboard__main" aria-label="Design results">
       <div class="erp-dashboard__toolbar">
         <span class="erp-dashboard__result-count">
-          Showing <strong>{{ designs().length }}</strong> of <strong>{{ totalRecords() | number }}</strong> designs
+          Showing <strong>{{ designs().length }}</strong> of <strong>{{ totalRecords() | number }}</strong> products
         </span>
         <div class="erp-dashboard__toolbar-right">
           <p-select
@@ -105,7 +148,7 @@
         </div>
       } @else {
         <div class="erp-dashboard__grid">
-          @for (design of designs(); track design.designID; let i = $index) {
+          @for (design of designs(); track design.productId; let i = $index) {
             <app-design-card
               [design]="design"
               [index]="i"

@@ -1,20 +1,28 @@
 import { HttpInterceptorFn } from '@angular/common/http';
+import { inject } from '@angular/core';
 import { environment } from '../environments/environment';
+import { AuthService } from '../services/auth.service';
 
-/** Attaches common headers and optional JWT bearer token. */
+/** Attaches Accept + Authorization: Bearer &lt;token&gt; on API calls (except login). */
 export const apiInterceptor: HttpInterceptorFn = (req, next) => {
-  const token = localStorage.getItem('access_token');
+  const auth = inject(AuthService);
 
   let headers = req.headers.set('Accept', 'application/json');
 
-  // Relative (/api/...) or absolute URLs that target the API base.
   const isApiRequest =
     req.url.startsWith(environment.apiUrl) ||
     req.url.includes(`${environment.apiUrl}/`) ||
     req.url.startsWith('/api');
 
-  if (token && isApiRequest) {
-    headers = headers.set('Authorization', `Bearer ${token}`);
+  const isLogin = /\/auth\/login\b/i.test(req.url);
+
+  if (isApiRequest && !isLogin) {
+    const token = auth.getToken();
+    if (token) {
+      headers = headers.set('Authorization', `Bearer ${token}`);
+    } else {
+      console.warn('[Auth] API request without token', { url: req.url, method: req.method });
+    }
   }
 
   return next(req.clone({ headers }));

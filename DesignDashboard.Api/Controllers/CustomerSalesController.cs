@@ -1,9 +1,11 @@
 using DesignDashboard.Api.DTOs;
 using DesignDashboard.Api.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DesignDashboard.Api.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/customer-sales")]
 [Produces("application/json")]
