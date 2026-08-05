@@ -30,22 +30,7 @@
       </header>
 
       <form class="login-card__form" [formGroup]="form" (ngSubmit)="onSubmit()" novalidate>
-        <div class="login-field">
-          <label for="companyId">Company</label>
-          <p-select
-            inputId="companyId"
-            formControlName="companyId"
-            [options]="companies()"
-            optionLabel="coName"
-            optionValue="coId"
-            placeholder="Select company"
-            [filter]="true"
-            filterBy="coName"
-            [loading]="companiesLoading()"
-            styleClass="w-full login-select"
-            appendTo="body"
-          />
-        </div>
+      
 
         <div class="login-field">
           <label for="emplCode">Employee Code</label>
@@ -56,8 +41,10 @@
               id="emplCode"
               formControlName="emplCode"
               autocomplete="username"
+              autocapitalize="characters"
               placeholder="Employee code"
-              class="w-full"
+              class="w-full login-field__empl-code"
+              (input)="onEmplCodeInput($event)"
             />
           </p-iconfield>
         </div>
@@ -73,6 +60,23 @@
             inputStyleClass="w-full"
             placeholder="Password"
             autocomplete="current-password"
+          />
+        </div>
+
+          <div class="login-field">
+          <label for="companyId">Company</label>
+          <p-select
+            inputId="companyId"
+            formControlName="companyId"
+            [options]="companies()"
+            optionLabel="coName"
+            optionValue="coId"
+            placeholder="Select company"
+            [filter]="true"
+            filterBy="coName"
+            [loading]="companiesLoading()"
+            styleClass="w-full login-select"
+            appendTo="body"
           />
         </div>
 

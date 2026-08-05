@@ -257,6 +257,10 @@
     font-size: 0.75rem;
     font-weight: 650;
   }
+
+  &__empl-code {
+    text-transform: uppercase;
+  }
 }
 
 .login-page--light .login-field__error {

@@ -1,4 +1,5 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
@@ -42,6 +43,7 @@ export class LoginComponent implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly messages = inject(MessageService);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly loading = signal(false);
   readonly companiesLoading = signal(false);
@@ -66,10 +68,42 @@ export class LoginComponent implements OnInit {
 
     const remembered = this.auth.getRememberedUsername();
     if (remembered) {
-      this.form.patchValue({ emplCode: remembered, rememberMe: true });
+      this.form.patchValue({ emplCode: remembered.toUpperCase(), rememberMe: true });
     }
 
+    // Keep Employee Code uppercase in the reactive form (password is unchanged).
+    this.form.controls.emplCode.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((value) => {
+        const upper = (value ?? '').toUpperCase();
+        if (value !== upper) {
+          this.form.controls.emplCode.setValue(upper, { emitEvent: false });
+        }
+      });
+
     this.loadCompanies();
+  }
+
+  /** Forces uppercase as the user types (letters only change; digits/symbols stay as-is). */
+  onEmplCodeInput(event: Event): void {
+    const input = event.target as HTMLInputElement | null;
+    if (!input) {
+      return;
+    }
+
+    const start = input.selectionStart;
+    const end = input.selectionEnd;
+    const upper = (input.value ?? '').toUpperCase();
+
+    if (input.value !== upper) {
+      input.value = upper;
+    }
+
+    this.form.controls.emplCode.setValue(upper, { emitEvent: false });
+
+    if (start != null && end != null) {
+      input.setSelectionRange(start, end);
+    }
   }
 
   toggleTheme(): void {
@@ -92,7 +126,7 @@ export class LoginComponent implements OnInit {
     this.auth
       .login(
         {
-          emplCode: emplCode.trim(),
+          emplCode: emplCode.trim().toUpperCase(),
           password,
           companyId: Number(companyId),
           companyName: company?.coName ?? '',
