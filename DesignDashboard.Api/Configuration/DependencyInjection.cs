@@ -13,6 +13,7 @@ public static class DependencyInjection
         // Auth — JWT + dbo.Usp_LoginCheck / dbo.Usp_ComboBind
         services.AddSingleton<IJwtService, JwtService>();
         services.AddScoped<IAuthRepository, AuthRepository>();
+        services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
         services.AddScoped<IAuthService, AuthService>();
 
         services.AddScoped<ICustomerRepository, CustomerRepository>();

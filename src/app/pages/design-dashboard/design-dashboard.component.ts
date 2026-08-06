@@ -20,7 +20,21 @@ import {
   ValidatorFn,
   Validators,
 } from '@angular/forms';
-import { debounceTime, merge, startWith } from 'rxjs';
+import {
+  EMPTY,
+  Subject,
+  catchError,
+  debounceTime,
+  finalize,
+  forkJoin,
+  map,
+  merge,
+  of,
+  startWith,
+  switchMap,
+  takeUntil,
+  tap,
+} from 'rxjs';
 import { ButtonModule } from 'primeng/button';
 import { DialogModule } from 'primeng/dialog';
 import { DialogService, DynamicDialogModule } from 'primeng/dynamicdialog';
@@ -42,7 +56,12 @@ import {
   SortField,
   SortOrder,
 } from '../../core/models/design.models';
-import { DesignFilterRequest } from '../../models/api.models';
+import {
+  CustomerDto,
+  CustomerSalesDto,
+  DashboardSummaryDto,
+  DesignFilterRequest,
+} from '../../models/api.models';
 import { AdvancedFilterComponent } from '../../components/advanced-filter/advanced-filter.component';
 import { DesignCardComponent } from '../../components/design-card/design-card.component';
 import { DesignDetailDialogComponent } from '../../components/design-detail-dialog/design-detail-dialog.component';
@@ -174,6 +193,18 @@ export class DesignDashboardComponent implements OnInit {
   private observer: IntersectionObserver | null = null;
   private clockTimer: ReturnType<typeof setInterval> | null = null;
 
+  /** Triggers — switchMap cancels the previous in-flight HTTP call. */
+  private readonly customersTrigger$ = new Subject<void>();
+  private readonly kpisTrigger$ = new Subject<DesignFilterRequest>();
+  private readonly designsTrigger$ = new Subject<DesignFilterRequest>();
+  private readonly companiesTrigger$ = new Subject<void>();
+  private readonly companyChangeRequest$ = new Subject<{
+    companyId: number;
+    companyName: string;
+  }>();
+  /** Completes in-flight customer/KPI/design HTTP when company changes. */
+  private readonly cancelLoads$ = new Subject<void>();
+
   private readonly customerAccountIdValue = toSignal(
     this.filterForm.get('customerAccountId')!.valueChanges.pipe(
       startWith(this.filterForm.get('customerAccountId')!.value)
@@ -250,6 +281,8 @@ export class DesignDashboardComponent implements OnInit {
       },
       { emitEvent: false }
     );
+
+    this.setupCancellableDataPipelines();
     // Do not call /api/customer without dates — loadCustomers() guards and sends params.
     this.loadCustomers();
     this.setupCustomerReloadOnDateChange();
@@ -413,21 +446,7 @@ export class DesignDashboardComponent implements OnInit {
   openChangeCompany(): void {
     this.selectedChangeCompanyId.set(this.auth.getCompanyId());
     this.changeCompanyVisible.set(true);
-    this.companiesLoading.set(true);
-    this.auth.getCompanies().subscribe({
-      next: (list) => {
-        this.companies.set(Array.isArray(list) ? list : []);
-        this.companiesLoading.set(false);
-      },
-      error: (err) => {
-        this.companiesLoading.set(false);
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Companies',
-          detail: err?.message ?? 'Unable to load companies.',
-        });
-      },
-    });
+    this.companiesTrigger$.next();
   }
 
   confirmChangeCompany(): void {
@@ -447,36 +466,10 @@ export class DesignDashboardComponent implements OnInit {
     }
 
     const company = this.companies().find((c) => c.coId === companyId);
-    this.changeCompanyLoading.set(true);
-    this.auth
-      .changeCompany({
-        companyId,
-        companyName: company?.coName ?? '',
-      })
-      .subscribe({
-        next: (res) => {
-          this.changeCompanyLoading.set(false);
-          this.changeCompanyVisible.set(false);
-          this.messageService.add({
-            severity: 'success',
-            summary: 'Company changed',
-            detail: res.message || `Switched to ${res.company?.coName ?? 'selected company'}`,
-            life: 2500,
-          });
-        },
-        error: (err) => {
-          this.changeCompanyLoading.set(false);
-          const detail =
-            err?.status === 403
-              ? 'You do not have permission to access this company.'
-              : (err?.message ?? 'Unable to change company.');
-          this.messageService.add({
-            severity: 'error',
-            summary: 'Change company',
-            detail,
-          });
-        },
-      });
+    this.companyChangeRequest$.next({
+      companyId,
+      companyName: company?.coName ?? '',
+    });
   }
 
   onLogout(): void {
@@ -494,150 +487,321 @@ export class DesignDashboardComponent implements OnInit {
       .subscribe(() => this.loadCustomers());
   }
 
+  /**
+   * Single-flight pipelines: each new trigger cancels the previous HTTP call (switchMap).
+   * Company change clears state, reloads customers, then KPIs/designs when a filter exists.
+   */
+  private setupCancellableDataPipelines(): void {
+    this.customersTrigger$
+      .pipe(
+        tap(() => this.customersLoading.set(true)),
+        switchMap(() =>
+          this.customersRequest$().pipe(
+            takeUntil(this.cancelLoads$),
+            catchError((err) => {
+              this.filterOptions.set({ customers: [] });
+              this.messageService.add({
+                severity: 'error',
+                summary: 'Customers',
+                detail: err?.message ?? 'Failed to load customers from API.',
+              });
+              return of([] as CustomerDto[]);
+            }),
+            finalize(() => this.customersLoading.set(false))
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((customers) => this.applyCustomersResult(customers, { warnIfEmpty: true }));
+
+    this.kpisTrigger$
+      .pipe(
+        tap(() => this.kpiLoading.set(true)),
+        switchMap((filter) =>
+          this.dashboardApi.getSummary(filter).pipe(
+            takeUntil(this.cancelLoads$),
+            catchError((err) => {
+              this.messageService.add({
+                severity: 'error',
+                summary: 'KPI summary',
+                detail: err?.message ?? 'Failed to load dashboard summary.',
+              });
+              return of(null);
+            }),
+            finalize(() => this.kpiLoading.set(false))
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((dto) => {
+        if (dto) {
+          this.kpiSummary.set(mapDashboardSummary(dto));
+        }
+      });
+
+    this.designsTrigger$
+      .pipe(
+        tap(() => {
+          this.loading.set(true);
+          this.designsError.set(null);
+        }),
+        switchMap((filter) =>
+          this.customerSalesApi.getCustomerSales(filter).pipe(
+            takeUntil(this.cancelLoads$),
+            map((dtos) => ({ filter, dtos: Array.isArray(dtos) ? dtos : [] })),
+            catchError((err) => {
+              const msg =
+                err?.status === 0
+                  ? `Cannot reach API at ${environment.apiUrl}. Start DesignDashboard.Api then Search again.`
+                  : (err?.message ?? 'Failed to load designs from API.');
+              this.designsError.set(msg);
+              this.allDesigns = [];
+              this.designs.set([]);
+              this.totalRecords.set(0);
+              this.messageService.add({
+                severity: 'error',
+                summary: 'Designs',
+                detail: msg,
+              });
+              return of({ filter, dtos: [] as CustomerSalesDto[] });
+            }),
+            finalize(() => this.loading.set(false))
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe(({ filter, dtos }) => this.applyDesignsResult(filter, dtos));
+
+    this.companiesTrigger$
+      .pipe(
+        tap(() => this.companiesLoading.set(true)),
+        switchMap(() =>
+          this.auth.getCompanies().pipe(
+            catchError((err) => {
+              this.messageService.add({
+                severity: 'error',
+                summary: 'Companies',
+                detail: err?.message ?? 'Unable to load companies.',
+              });
+              return of([] as CompanyOption[]);
+            }),
+            finalize(() => this.companiesLoading.set(false))
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((list) => this.companies.set(Array.isArray(list) ? list : []));
+
+    this.companyChangeRequest$
+      .pipe(
+        tap(() => this.changeCompanyLoading.set(true)),
+        switchMap(({ companyId, companyName }) =>
+          this.auth.changeCompany({ companyId, companyName }).pipe(
+            switchMap((res) => {
+              // Drop in-flight Search/customer calls so they cannot repaint old company data.
+              this.cancelLoads$.next();
+              this.clearDashboardStateForCompanyChange();
+              this.resetFiltersForCompanyChange();
+              return this.reloadDashboardData$().pipe(map(() => res));
+            }),
+            catchError((err) => {
+              const detail =
+                err?.status === 403
+                  ? 'You do not have permission to access this company.'
+                  : (err?.message ?? 'Unable to change company.');
+              this.messageService.add({
+                severity: 'error',
+                summary: 'Change company',
+                detail,
+              });
+              return EMPTY;
+            }),
+            finalize(() => this.changeCompanyLoading.set(false))
+          )
+        ),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((res) => {
+        this.changeCompanyVisible.set(false);
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Company changed',
+          detail:
+            res.message ||
+            `Switched to ${res.company?.coName ?? 'selected company'}. Select a customer and Search.`,
+          life: 3000,
+        });
+      });
+  }
+
   private loadCustomers(): void {
+    this.customersTrigger$.next();
+  }
+
+  private fetchKpis(filter: DesignFilterRequest): void {
+    this.kpisTrigger$.next(filter);
+  }
+
+  private fetchDesigns(filter: DesignFilterRequest): void {
+    this.designsTrigger$.next(filter);
+  }
+
+  /** Clears customers, selection, KPIs, designs, pagination, and search flags. */
+  private clearDashboardStateForCompanyChange(): void {
+    this.filterOptions.set({ customers: [] });
+    this.kpiSummary.set(null);
+    this.allDesigns = [];
+    this.designs.set([]);
+    this.totalRecords.set(0);
+    this.currentPage.set(1);
+    this.pageSize.set(12);
+    this.hasSearched.set(false);
+    this.designsError.set(null);
+    this.kpiLoading.set(false);
+    this.loading.set(false);
+    this.loadingMore.set(false);
+    this.customersLoading.set(true);
+  }
+
+  /** Reset filter form (customer + dates) without emitting date-change reloads mid-switch. */
+  private resetFiltersForCompanyChange(): void {
+    this.filterForm.reset(
+      {
+        customerAccountId: null,
+        startDate: new Date(2024, 0, 1),
+        endDate: new Date(),
+      },
+      { emitEvent: false }
+    );
+  }
+
+  /**
+   * After company JWT update: reload customers, then KPIs + designs if a customer filter exists.
+   * (Selection is cleared on company change, so KPIs/designs stay empty until the user Searches.)
+   */
+  private reloadDashboardData$() {
+    return this.customersRequest$().pipe(
+      tap((customers) => this.applyCustomersResult(customers, { warnIfEmpty: true })),
+      tap(() => this.customersLoading.set(false)),
+      switchMap(() => {
+        const request = this.buildApiFilter();
+        if (!request) {
+          return of(void 0);
+        }
+
+        this.hasSearched.set(true);
+        this.kpiLoading.set(true);
+        this.loading.set(true);
+
+        return forkJoin({
+          summary: this.dashboardApi.getSummary(request).pipe(
+            catchError((err) => {
+              this.messageService.add({
+                severity: 'error',
+                summary: 'KPI summary',
+                detail: err?.message ?? 'Failed to load dashboard summary.',
+              });
+              return of(null as DashboardSummaryDto | null);
+            })
+          ),
+          designs: this.customerSalesApi.getCustomerSales(request).pipe(
+            catchError((err) => {
+              this.messageService.add({
+                severity: 'error',
+                summary: 'Designs',
+                detail: err?.message ?? 'Failed to load designs from API.',
+              });
+              return of([] as CustomerSalesDto[]);
+            })
+          ),
+        }).pipe(
+          tap(({ summary, designs }) => {
+            this.kpiSummary.set(summary ? mapDashboardSummary(summary) : null);
+            this.applyDesignsResult(request, designs);
+          }),
+          finalize(() => {
+            this.kpiLoading.set(false);
+            this.loading.set(false);
+          }),
+          map(() => void 0)
+        );
+      })
+    );
+  }
+
+  private customersRequest$() {
     const startDate = resolveFilterDate(this.filterForm.value.startDate);
     const endDate = resolveFilterDate(this.filterForm.value.endDate);
 
     // Never call GET /api/customer without query params.
-    if (!startDate || !endDate) {
+    if (!startDate || !endDate || new Date(endDate) < new Date(startDate)) {
       this.filterOptions.set({ customers: [] });
-      this.customersLoading.set(false);
-      return;
+      return of([] as CustomerDto[]);
     }
 
-    if (new Date(endDate) < new Date(startDate)) {
-      this.filterOptions.set({ customers: [] });
-      this.customersLoading.set(false);
-      return;
+    return this.customerApi.getCustomers(startDate, endDate);
+  }
+
+  private applyCustomersResult(
+    customers: CustomerDto[],
+    options?: { warnIfEmpty?: boolean }
+  ): void {
+    const list = customers ?? [];
+    const mapped = mapCustomersToOptions(list);
+    this.filterOptions.set({ customers: mapped });
+
+    const selected = this.filterForm.value.customerAccountId;
+    if (
+      selected != null &&
+      !mapped.some((o) => o.value === String(selected) || o.value === selected)
+    ) {
+      this.filterForm.patchValue({ customerAccountId: null }, { emitEvent: false });
     }
 
-    this.customersLoading.set(true);
-    this.customerApi.getCustomers(startDate, endDate).subscribe({
-      next: (customers) => {
-        const options = mapCustomersToOptions(customers ?? []);
-        this.filterOptions.set({ customers: options });
-        this.customersLoading.set(false);
-
-        const selected = this.filterForm.value.customerAccountId;
-        if (
-          selected != null &&
-          !options.some((o) => o.value === String(selected) || o.value === selected)
-        ) {
-          this.filterForm.patchValue({ customerAccountId: null }, { emitEvent: false });
-        }
-
-        if (!customers?.length) {
-          this.messageService.add({
-            severity: 'warn',
-            summary: 'Customers',
-            detail: 'No customers with bills in the selected date range.',
-          });
-        }
-      },
-      error: (err) => {
-        this.customersLoading.set(false);
-        this.filterOptions.set({ customers: [] });
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Customers',
-          detail: err?.message ?? 'Failed to load customers from API.',
-        });
-      },
-    });
+    if (options?.warnIfEmpty && !list.length) {
+      this.messageService.add({
+        severity: 'warn',
+        summary: 'Customers',
+        detail: 'No customers with bills in the selected date range.',
+      });
+    }
   }
 
-  private fetchKpis(filter: DesignFilterRequest): void {
-    this.kpiLoading.set(true);
-    this.dashboardApi.getSummary(filter).subscribe({
-      next: (dto) => {
-        this.kpiSummary.set(mapDashboardSummary(dto));
-        this.kpiLoading.set(false);
-      },
-      error: (err) => {
-        this.kpiLoading.set(false);
-        this.messageService.add({
-          severity: 'error',
-          summary: 'KPI summary',
-          detail: err?.message ?? 'Failed to load dashboard summary.',
-        });
-      },
+  private applyDesignsResult(filter: DesignFilterRequest, dtos: CustomerSalesDto[]): void {
+    const list = Array.isArray(dtos) ? dtos : [];
+    const api257 = list.find((d) => Number(d.productId) === 257);
+    console.log('[customer-sales API product 257]', {
+      found: !!api257,
+      pendingOrder: api257?.pendingOrder,
+      pendingProcess: api257?.pendingProcess,
+      pendingProcessEquals1190: api257 != null && Number(api257.pendingProcess) === 1190,
+      raw: api257,
     });
-  }
 
-  private fetchDesigns(filter: DesignFilterRequest): void {
-    this.loading.set(true);
+    this.designsError.set(null);
+    this.allDesigns = list.map((dto) => mapCustomerSalesToListItem(dto));
 
-    this.customerSalesApi.getCustomerSales(filter).subscribe({
-      next: (dtos) => {
-        const list = Array.isArray(dtos) ? dtos : [];
-        const api257 = list.find((d) => Number(d.productId) === 257);
-        console.log('[customer-sales API product 257]', {
-          found: !!api257,
-          pendingOrder: api257?.pendingOrder,
-          pendingProcess: api257?.pendingProcess,
-          pendingProcessEquals1190: api257 != null && Number(api257.pendingProcess) === 1190,
-          raw: api257,
-        });
-
-        this.designsError.set(null);
-        this.allDesigns = list.map((dto) => mapCustomerSalesToListItem(dto));
-
-        const mapped257 = this.allDesigns.find((c) => c.productId === 257);
-        console.log('[customer-sales mapped product 257]', {
-          found: !!mapped257,
-          pendingOrder: mapped257?.pendingOrder,
-          pendingOrderQuantity: mapped257?.pendingOrderQuantity,
-          inProcess: mapped257?.inProcess,
-          inProcessingQuantity: mapped257?.inProcessingQuantity,
-          inProcessEquals1190: mapped257?.inProcess === 1190,
-        });
-
-        this.totalRecords.set(this.allDesigns.length);
-        this.currentPage.set(1);
-        this.applyPage(false);
-
-        const render257 = this.designs().find((c) => c.productId === 257);
-        console.log('[dashboard list before render product 257]', {
-          found: !!render257,
-          pendingOrder: render257?.pendingOrder,
-          pendingOrderQuantity: render257?.pendingOrderQuantity,
-          inProcess: render257?.inProcess,
-          inProcessingQuantity: render257?.inProcessingQuantity,
-          inProcessEquals1190: render257?.inProcess === 1190,
-          bundleHint: typeof document !== 'undefined'
-            ? Array.from(document.scripts)
-                .map((s) => s.src)
-                .filter((src) => /main[^/]*\.js/i.test(src))
-            : [],
-        });
-
-        this.loading.set(false);
-
-        if (list.length === 0) {
-          this.messageService.add({
-            severity: 'info',
-            summary: 'No designs',
-            detail: `No bill sales for the selected customer between ${filter.startDate} and ${filter.endDate}.`,
-          });
-        }
-      },
-      error: (err) => {
-        this.loading.set(false);
-        this.allDesigns = [];
-        this.designs.set([]);
-        this.totalRecords.set(0);
-        const msg =
-          err?.status === 0
-            ? `Cannot reach API at ${environment.apiUrl}. Start DesignDashboard.Api then Search again.`
-            : (err?.message ?? 'Failed to load designs from API.');
-        this.designsError.set(msg);
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Designs',
-          detail: msg,
-        });
-      },
+    const mapped257 = this.allDesigns.find((c) => c.productId === 257);
+    console.log('[customer-sales mapped product 257]', {
+      found: !!mapped257,
+      pendingOrder: mapped257?.pendingOrder,
+      pendingOrderQuantity: mapped257?.pendingOrderQuantity,
+      inProcess: mapped257?.inProcess,
+      inProcessingQuantity: mapped257?.inProcessingQuantity,
+      inProcessEquals1190: mapped257?.inProcess === 1190,
     });
+
+    this.totalRecords.set(this.allDesigns.length);
+    this.currentPage.set(1);
+    this.applyPage(false);
+
+    if (list.length === 0 && this.hasSearched()) {
+      this.messageService.add({
+        severity: 'info',
+        summary: 'No designs',
+        detail: `No bill sales for the selected customer between ${filter.startDate} and ${filter.endDate}.`,
+      });
+    }
   }
 
   /** Client-side sort + page slice (API returns full filtered list). */

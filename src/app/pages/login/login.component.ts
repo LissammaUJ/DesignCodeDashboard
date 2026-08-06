@@ -140,12 +140,16 @@ export class LoginComponent implements OnInit {
         },
         error: (err) => {
           this.loading.set(false);
+          // Prefer API message (401/403) so UI matches AuthController response.
           const detail =
-            err?.status === 403
+            (typeof err?.message === 'string' && err.message.trim()
+              ? err.message
+              : null) ||
+            (err?.status === 403
               ? 'You do not have permission to access this company.'
               : err?.status === 401
                 ? 'Invalid employee code, password, or company.'
-                : (err?.message ?? 'Unable to sign in.');
+                : 'Unable to sign in.');
           this.error.set(detail);
           this.messages.add({ severity: 'error', summary: 'Login failed', detail });
         },

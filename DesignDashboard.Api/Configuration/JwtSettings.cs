@@ -15,6 +15,9 @@ public sealed class JwtSettings
 
     public string Audience { get; set; } = string.Empty;
 
-    /// <summary>Token lifetime in minutes (default 60).</summary>
+    /// <summary>Access-token lifetime in minutes (default 60).</summary>
     public int ExpiryMinutes { get; set; } = 60;
+
+    /// <summary>Refresh-token lifetime in days (default 7).</summary>
+    public int RefreshTokenExpiryDays { get; set; } = 7;
 }

@@ -79,14 +79,22 @@ public sealed class AuthRepository(
         if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             logger.LogWarning(
-                "[Auth] {Proc} returned no rows for EmplCode={EmplCode} CoId={CoId}",
+                "[Auth] {Proc} returned no rows for EmplCode={EmplCode} CoId={CoId} (check password hash / Active / UserType IN 1,2)",
                 LoginCheckProc,
                 emplCode,
                 companyId);
+            logger.LogInformation("Stored procedure result count = {Count}", 0);
             return null;
         }
 
-        return MapEmployee(reader);
+        var employee = MapEmployee(reader);
+        logger.LogInformation(
+            "Stored procedure result count = {Count} EmplId={EmplId} EmplCode={EmplCode} Admin={Admin}",
+            1,
+            employee.EmplId,
+            employee.EmplCode,
+            employee.Admin);
+        return employee;
     }
 
     public async Task<int> CheckCompanyAccessAsync(

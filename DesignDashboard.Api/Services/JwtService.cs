@@ -15,6 +15,8 @@ public sealed class JwtService(IOptions<JwtSettings> options, ILogger<JwtService
 
     public int ExpiryMinutes => Math.Max(1, _settings.ExpiryMinutes);
 
+    public int RefreshTokenExpiryDays => Math.Max(1, _settings.RefreshTokenExpiryDays);
+
     public string GenerateToken(EmployeeLoginDto employee, CompanyDto company)
     {
         ArgumentNullException.ThrowIfNull(employee);
@@ -61,7 +63,7 @@ public sealed class JwtService(IOptions<JwtSettings> options, ILogger<JwtService
         var jwt = new JwtSecurityTokenHandler().WriteToken(token);
 
         logger.LogInformation(
-            "[JWT] Token generated | User={Username} | EmplId={EmplId} | CoId={CoId} | ExpiresUtc={Expires:o}",
+            "[JWT] Access token generated | User={Username} | EmplId={EmplId} | CoId={CoId} | ExpiresUtc={Expires:o}",
             employee.EmplCode,
             employee.EmplId,
             company.CoId,

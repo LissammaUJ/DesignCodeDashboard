@@ -1,33 +1,40 @@
 import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
-import { inject } from '@angular/core';
 import { catchError, throwError } from 'rxjs';
-import { AuthService } from '../services/auth.service';
 
-/** Logs HTTP failures and redirects to login on 401 (expired / invalid JWT). */
+function isPublicApiUrl(url: string): boolean {
+  return (
+    /\/api\/company\/list\b/i.test(url) ||
+    /\/api\/login\b/i.test(url) ||
+    /\/api\/auth\/login\b/i.test(url) ||
+    /\/api\/auth\/refresh\b/i.test(url) ||
+    /\/auth\/login\b/i.test(url) ||
+    /\/auth\/refresh\b/i.test(url) ||
+    /\/company\/list\b/i.test(url)
+  );
+}
+
+/**
+ * Logs HTTP failures. Does not logout on 401 —
+ * api.interceptor handles refresh + logout-only-if-refresh-fails.
+ */
 export const errorInterceptor: HttpInterceptorFn = (req, next) => {
-  const auth = inject(AuthService);
-
   return next(req).pipe(
     catchError((error: HttpErrorResponse) => {
-      const isPublicAuth =
-        /\/api\/login\b/i.test(req.url) ||
-        /\/auth\/login\b/i.test(req.url) ||
-        /\/company\/list\b/i.test(req.url);
+      const isPublic = isPublicApiUrl(req.url);
 
       if (error.status === 0) {
         console.error('[Network] API unreachable', {
           url: error.url ?? req.url,
-          hint: 'Start DesignDashboard.Api on :100 and :5000. For :4200 ensure proxy → :5000.',
+          hint: 'API must allow CORS for http://localhost:4200. Proxy target or apiUrl should reach the API host.',
         });
       } else if (error.status === 401) {
         console.warn('[Auth] Unauthorized response', {
           url: error.url ?? req.url,
-          isPublicAuth,
+          isPublic,
+          hint: isPublic
+            ? 'Public endpoint rejected credentials / refresh token.'
+            : 'api.interceptor will attempt refresh when applicable.',
         });
-        // Never clear session / redirect on failed login credentials.
-        if (!isPublicAuth) {
-          auth.logout(true);
-        }
       }
 
       return throwError(() => error);

@@ -11,13 +11,19 @@ namespace DesignDashboard.Api.Controllers;
 [Produces("application/json")]
 public sealed class CompanyController(IAuthService authService, ILogger<CompanyController> logger) : ControllerBase
 {
-    /// <summary>GET /api/company/list — dbo.Usp_ComboBind @TableName='Company', @CoId=0</summary>
+    /// <summary>GET /api/company/list — public (no JWT). dbo.Usp_ComboBind @TableName='Company', @CoId=0</summary>
     [AllowAnonymous]
     [HttpGet("list")]
     [ProducesResponseType(typeof(IReadOnlyList<CompanyDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<CompanyDto>>> GetList(CancellationToken cancellationToken)
     {
+        var hasAuth = Request.Headers.ContainsKey("Authorization");
+        logger.LogInformation(
+            "[Company] GET list (AllowAnonymous) AuthorizationHeaderPresent={HasAuth}",
+            hasAuth);
+
         var companies = await authService.GetCompaniesAsync(cancellationToken).ConfigureAwait(false);
+        logger.LogInformation("[Company] Returning {Count} companies", companies.Count);
         return Ok(companies);
     }
 
@@ -58,8 +64,9 @@ public sealed class CompanyController(IAuthService authService, ILogger<CompanyC
             user.EmplCode,
             request.CompanyId);
 
+        var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
         var result = await authService
-            .ChangeCompanyAsync(user, request, cancellationToken)
+            .ChangeCompanyAsync(user, request, cancellationToken, clientIp)
             .ConfigureAwait(false);
 
         if (result.NoCompanyPermission)

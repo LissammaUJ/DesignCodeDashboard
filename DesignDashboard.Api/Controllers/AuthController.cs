@@ -22,8 +22,8 @@ public sealed class AuthController(IAuthService authService, ILogger<AuthControl
         CancellationToken cancellationToken)
     {
         logger.LogInformation(
-            "[Auth] Login EmplCode={EmplCode} CoId={CoId}",
-            request?.ResolvedEmplCode ?? "(null)",
+            "Login request: EmplCode={EmplCode}, CompanyId={CompanyId}",
+            request?.EmplCode ?? request?.Username ?? "(null)",
             request?.CompanyId);
 
         if (request is null
@@ -31,6 +31,11 @@ public sealed class AuthController(IAuthService authService, ILogger<AuthControl
             || string.IsNullOrWhiteSpace(request.Password)
             || request.CompanyId <= 0)
         {
+            logger.LogWarning(
+                "[Auth] BadRequest — EmplCode empty={EmplEmpty} Password empty={PwdEmpty} CompanyId={CompanyId}",
+                string.IsNullOrWhiteSpace(request?.ResolvedEmplCode),
+                string.IsNullOrWhiteSpace(request?.Password),
+                request?.CompanyId);
             return BadRequest(new ApiErrorResponse
             {
                 StatusCode = StatusCodes.Status400BadRequest,
@@ -38,10 +43,14 @@ public sealed class AuthController(IAuthService authService, ILogger<AuthControl
             });
         }
 
-        var result = await authService.AuthenticateAsync(request, cancellationToken).ConfigureAwait(false);
+        var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var result = await authService
+            .AuthenticateAsync(request, cancellationToken, clientIp)
+            .ConfigureAwait(false);
 
         if (result.NoCompanyPermission)
         {
+            logger.LogWarning("[Auth] 403 Forbidden — {Message}", result.Message);
             return StatusCode(StatusCodes.Status403Forbidden, new ApiErrorResponse
             {
                 StatusCode = StatusCodes.Status403Forbidden,
@@ -51,6 +60,47 @@ public sealed class AuthController(IAuthService authService, ILogger<AuthControl
 
         if (result.InvalidCredentials || result.Response is null)
         {
+            logger.LogWarning("[Auth] 401 Unauthorized — {Message}", result.Message);
+            return Unauthorized(new ApiErrorResponse
+            {
+                StatusCode = StatusCodes.Status401Unauthorized,
+                Message = result.Message,
+            });
+        }
+
+        logger.LogInformation(
+            "[Auth] 200 OK — EmplCode={EmplCode} CoId={CoId}",
+            result.Response.Username,
+            result.Response.Company?.CoId);
+        return Ok(result.Response);
+    }
+
+    /// <summary>POST /api/auth/refresh — rotate refresh token and issue a new access token.</summary>
+    [HttpPost("refresh")]
+    [ProducesResponseType(typeof(LoginResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<LoginResponseDto>> Refresh(
+        [FromBody] RefreshTokenRequestDto? request,
+        CancellationToken cancellationToken)
+    {
+        if (request is null || string.IsNullOrWhiteSpace(request.RefreshToken))
+        {
+            return BadRequest(new ApiErrorResponse
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = "Refresh token is required.",
+            });
+        }
+
+        var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var result = await authService
+            .RefreshAsync(request, cancellationToken, clientIp)
+            .ConfigureAwait(false);
+
+        if (result.InvalidCredentials || result.Response is null)
+        {
+            logger.LogWarning("[Auth] Refresh 401 — {Message}", result.Message);
             return Unauthorized(new ApiErrorResponse
             {
                 StatusCode = StatusCodes.Status401Unauthorized,

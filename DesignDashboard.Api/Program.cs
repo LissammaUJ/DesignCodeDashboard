@@ -60,10 +60,13 @@ builder.Services
         {
             OnAuthenticationFailed = context =>
             {
+                // Stale/invalid Bearer tokens must not block [AllowAnonymous] endpoints
+                // (company list / login while localStorage still has an old JWT).
                 startupLogger.LogWarning(
                     context.Exception,
-                    "[JWT] Authentication failed for {Path}",
+                    "[JWT] Authentication failed for {Path} — continuing as anonymous",
                     context.Request.Path.Value);
+                context.NoResult();
                 return Task.CompletedTask;
             },
             OnChallenge = context =>
@@ -142,15 +145,16 @@ startupLogger.LogInformation(
     DatabaseSettings.ConnectionName,
     !string.IsNullOrWhiteSpace(erpCs));
 
-// SPA + Angular origins: :100, :5000 (API/SPA), :4200 (ng serve).
+// SPA + Angular origins (local + remote host on :100).
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("SpaCors", policy =>
     {
         policy.WithOrigins(
-                "http://localhost:100",
+                "http://localhost:4200",
                 "http://localhost:5000",
-                "http://localhost:4200")
+                "http://localhost:100",
+                "http://103.184.242.67:100")
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
@@ -165,6 +169,27 @@ log.LogInformation(
     app.Environment.ApplicationName);
 
 app.UseMiddleware<GlobalExceptionMiddleware>();
+
+// Debug: log whether Authorization is present on each request (do not log full token).
+app.Use(async (context, next) =>
+{
+    var auth = context.Request.Headers.Authorization.ToString();
+    var authSummary = string.IsNullOrEmpty(auth)
+        ? "(none)"
+        : (auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+            ? $"Bearer (len={auth.Length})"
+            : "(non-bearer)");
+
+    log.LogInformation(
+        "Path={Path} Method={Method} Auth={Auth}",
+        context.Request.Path.Value,
+        context.Request.Method,
+        authSummary);
+
+    Console.WriteLine($"Path={context.Request.Path} Auth={authSummary}");
+
+    await next();
+});
 
 log.LogInformation("Enabling Swagger + SwaggerUI at /swagger");
 app.UseSwagger();
@@ -230,5 +255,5 @@ app.MapFallback(async context =>
 });
 
 log.LogInformation(
-    "Starting Kestrel on http://localhost:100 and http://localhost:5000 | Angular :4200 proxies /api → :5000 | Login: /login");
+    "Starting Kestrel | CORS allows :4200,:5000,:100,103.184.242.67:100 | Public: GET /api/company/list, POST /api/login, POST /api/auth/login");
 app.Run();

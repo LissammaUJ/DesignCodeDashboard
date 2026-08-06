@@ -21,8 +21,8 @@ public sealed class LoginController(IAuthService authService, ILogger<LoginContr
         CancellationToken cancellationToken)
     {
         logger.LogInformation(
-            "[Login] EmplCode={EmplCode} CoId={CoId}",
-            request?.ResolvedEmplCode ?? "(null)",
+            "Login request: EmplCode={EmplCode}, CompanyId={CompanyId}",
+            request?.EmplCode ?? request?.Username ?? "(null)",
             request?.CompanyId);
 
         if (request is null
@@ -37,7 +37,11 @@ public sealed class LoginController(IAuthService authService, ILogger<LoginContr
             });
         }
 
-        var result = await authService.AuthenticateAsync(request, cancellationToken).ConfigureAwait(false);
+        var clientIp = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var result = await authService
+            .AuthenticateAsync(request, cancellationToken, clientIp)
+            .ConfigureAwait(false);
+
 
         if (result.NoCompanyPermission)
         {

@@ -15,6 +15,10 @@ export interface ChangeCompanyRequest {
   companyName?: string;
 }
 
+export interface RefreshTokenRequest {
+  refreshToken: string;
+}
+
 export interface EmployeeLogin {
   emplId: number;
   emplCode: string;
@@ -33,7 +37,9 @@ export interface LoginResponse {
   employee?: EmployeeLogin | null;
   company?: CompanyOption | null;
   accessToken: string;
+  refreshToken?: string;
   tokenType: string;
   expiresInSeconds: number;
+  refreshExpiresInSeconds?: number;
   username: string;
 }

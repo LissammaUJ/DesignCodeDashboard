@@ -1,7 +1,14 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
-import { Observable, catchError, tap, throwError } from 'rxjs';
+import {
+  Observable,
+  catchError,
+  finalize,
+  shareReplay,
+  tap,
+  throwError,
+} from 'rxjs';
 import { environment } from '../environments/environment';
 import {
   ChangeCompanyRequest,
@@ -9,9 +16,12 @@ import {
   EmployeeLogin,
   LoginRequest,
   LoginResponse,
+  RefreshTokenRequest,
 } from '../models/auth.models';
 
 const TOKEN_KEY = 'access_token';
+const REFRESH_TOKEN_KEY = 'refresh_token';
+const REFRESH_EXPIRES_KEY = 'refresh_expires_at';
 const USER_KEY = 'auth_username';
 const EXPIRES_KEY = 'auth_expires_at';
 const REMEMBER_KEY = 'auth_remember_username';
@@ -25,12 +35,18 @@ export class AuthService {
   private readonly router = inject(Router);
   private readonly apiUrl = environment.apiUrl;
 
-  readonly isAuthenticated = signal(this.hasValidToken());
-  /** Bumped on login / company change so UI computeds refresh. */
+  /** Single in-flight refresh so parallel 401s share one /api/auth/refresh call. */
+  private refreshInFlight$: Observable<LoginResponse> | null = null;
+
+  readonly isAuthenticated = signal(this.hasSession());
+  /** Bumped on login / company change / refresh so UI computeds refresh. */
   readonly sessionVersion = signal(0);
 
+  /** Public — interceptor must not attach JWT (see api.interceptor.ts). */
   getCompanies(): Observable<CompanyOption[]> {
-    return this.http.get<CompanyOption[]>(`${this.apiUrl}/company/list`).pipe(
+    const url = `${this.apiUrl}/company/list`;
+    console.debug('[Auth] Loading companies (public)', { url });
+    return this.http.get<CompanyOption[]>(url).pipe(
       catchError((err) => this.mapHttpError(err, 'Unable to load companies.'))
     );
   }
@@ -57,19 +73,46 @@ export class AuthService {
 
     return this.http.post<LoginResponse>(`${this.apiUrl}/company/change`, body).pipe(
       tap((res) => this.persistSession(res, this.getRememberedUsername() || null)),
-      catchError((err) =>
-        this.mapHttpError(err, 'Unable to change company.')
-      )
+      catchError((err) => this.mapHttpError(err, 'Unable to change company.'))
     );
   }
 
+  /**
+   * Exchanges the stored refresh token for a new access + refresh pair.
+   * Concurrent callers share one HTTP request (single-flight).
+   */
+  refreshSession(): Observable<LoginResponse> {
+    if (this.refreshInFlight$) {
+      return this.refreshInFlight$;
+    }
+
+    const refreshToken = this.getRefreshToken();
+    if (!refreshToken) {
+      return throwError(() => ({
+        status: 401,
+        message: 'No refresh token available.',
+        details: null,
+      }));
+    }
+
+    const body: RefreshTokenRequest = { refreshToken };
+    this.refreshInFlight$ = this.http
+      .post<LoginResponse>(`${this.apiUrl}/auth/refresh`, body)
+      .pipe(
+        tap((res) => this.persistSession(res, this.getRememberedUsername() || null)),
+        catchError((err) => this.mapHttpError(err, 'Session expired. Please sign in again.')),
+        finalize(() => {
+          this.refreshInFlight$ = null;
+        }),
+        shareReplay({ bufferSize: 1, refCount: false })
+      );
+
+    return this.refreshInFlight$;
+  }
+
   logout(redirectToLogin = true): void {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
-    localStorage.removeItem(EXPIRES_KEY);
-    localStorage.removeItem(COMPANY_ID_KEY);
-    localStorage.removeItem(COMPANY_NAME_KEY);
-    localStorage.removeItem(EMPLOYEE_KEY);
+    this.clearSessionStorage();
+    this.refreshInFlight$ = null;
     this.isAuthenticated.set(false);
     this.sessionVersion.update((v) => v + 1);
     if (redirectToLogin) {
@@ -77,11 +120,19 @@ export class AuthService {
     }
   }
 
+  /** Returns a non-expired access token, or null if missing/expired. */
   getToken(): string | null {
-    if (!this.hasValidToken()) {
+    if (!this.hasValidAccessToken()) {
       return null;
     }
     return localStorage.getItem(TOKEN_KEY);
+  }
+
+  getRefreshToken(): string | null {
+    if (!this.hasValidRefreshToken()) {
+      return null;
+    }
+    return localStorage.getItem(REFRESH_TOKEN_KEY);
   }
 
   getUsername(): string | null {
@@ -111,8 +162,9 @@ export class AuthService {
     return localStorage.getItem(REMEMBER_KEY) ?? '';
   }
 
+  /** True when access token is valid, or a refresh token can renew the session. */
   isLoggedIn(): boolean {
-    const ok = this.hasValidToken();
+    const ok = this.hasSession();
     this.isAuthenticated.set(ok);
     return ok;
   }
@@ -128,6 +180,15 @@ export class AuthService {
     localStorage.setItem(USER_KEY, res.username ?? res.employee?.emplCode ?? '');
     localStorage.setItem(EXPIRES_KEY, String(expiresAt));
 
+    const refresh = res.refreshToken?.trim();
+    if (refresh) {
+      localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
+      const refreshSeconds = Number(res.refreshExpiresInSeconds);
+      if (Number.isFinite(refreshSeconds) && refreshSeconds > 0) {
+        localStorage.setItem(REFRESH_EXPIRES_KEY, String(Date.now() + refreshSeconds * 1000));
+      }
+    }
+
     if (res.company?.coId) {
       localStorage.setItem(COMPANY_ID_KEY, String(res.company.coId));
       localStorage.setItem(COMPANY_NAME_KEY, res.company.coName ?? '');
@@ -139,15 +200,17 @@ export class AuthService {
 
     if (rememberUsername) {
       localStorage.setItem(REMEMBER_KEY, rememberUsername);
-    } else if (rememberUsername === null) {
-      // keep existing remember flag when changing company with empty string skip
     }
 
     this.isAuthenticated.set(true);
     this.sessionVersion.update((v) => v + 1);
   }
 
-  private hasValidToken(): boolean {
+  private hasSession(): boolean {
+    return this.hasValidAccessToken() || this.hasValidRefreshToken();
+  }
+
+  private hasValidAccessToken(): boolean {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token?.trim()) {
       return false;
@@ -157,22 +220,39 @@ export class AuthService {
     if (expiresRaw) {
       const expiresAt = Number(expiresRaw);
       if (Number.isFinite(expiresAt) && Date.now() >= expiresAt) {
-        this.clearTokenOnly();
         return false;
       }
     }
 
     const expMs = this.readJwtExpiryMs(token);
     if (expMs != null && Date.now() >= expMs) {
-      this.clearTokenOnly();
       return false;
     }
 
     return true;
   }
 
-  private clearTokenOnly(): void {
+  private hasValidRefreshToken(): boolean {
+    const refresh = localStorage.getItem(REFRESH_TOKEN_KEY);
+    if (!refresh?.trim()) {
+      return false;
+    }
+
+    const expiresRaw = localStorage.getItem(REFRESH_EXPIRES_KEY);
+    if (expiresRaw) {
+      const expiresAt = Number(expiresRaw);
+      if (Number.isFinite(expiresAt) && Date.now() >= expiresAt) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  private clearSessionStorage(): void {
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    localStorage.removeItem(REFRESH_EXPIRES_KEY);
     localStorage.removeItem(USER_KEY);
     localStorage.removeItem(EXPIRES_KEY);
     localStorage.removeItem(COMPANY_ID_KEY);

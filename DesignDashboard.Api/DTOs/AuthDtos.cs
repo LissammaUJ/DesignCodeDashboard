@@ -76,9 +76,19 @@ public sealed class LoginResponseDto
     public EmployeeLoginDto? Employee { get; set; }
     public CompanyDto? Company { get; set; }
     public string AccessToken { get; set; } = string.Empty;
+    public string RefreshToken { get; set; } = string.Empty;
     public string TokenType { get; set; } = "Bearer";
     public int ExpiresInSeconds { get; set; }
+    public int RefreshExpiresInSeconds { get; set; }
     public string Username { get; set; } = string.Empty;
+}
+
+/// <summary>POST /api/auth/refresh body.</summary>
+public sealed class RefreshTokenRequestDto
+{
+    [Required]
+    [MaxLength(500)]
+    public string RefreshToken { get; set; } = string.Empty;
 }
 
 /// <summary>Result of login / change-company attempt (credentials vs company permission).</summary>
