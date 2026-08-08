@@ -1,4 +1,5 @@
 using System.Data;
+using Dapper;
 using DesignDashboard.Api.Interfaces;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Logging;
@@ -6,13 +7,19 @@ using Microsoft.Extensions.Logging;
 namespace DesignDashboard.Api.Helpers;
 
 /// <summary>
-/// Loads design card thumbnails via dbo.usp_DesignDashboard (@Action = GetDesignThumbnails).
+/// Loads design card thumbnails via dbo.Usp_DesignDashboard_New (@Action = GetDesignThumbnails).
 /// Batches DesignIds to avoid huge single payloads over WAN.
 /// </summary>
 public static class DesignThumbnailLoader
 {
     private const int BatchSize = 40;
     private const int CommandTimeoutSeconds = 90;
+
+    private sealed class ThumbRow
+    {
+        public int DesignId { get; set; }
+        public byte[]? ImgThumbData { get; set; }
+    }
 
     public static async Task<Dictionary<int, string?>> LoadDataUrlsAsync(
         ISqlConnectionFactory connectionFactory,
@@ -34,28 +41,26 @@ public static class DesignThumbnailLoader
             try
             {
                 await using var connection = (SqlConnection)connectionFactory.CreateConnection();
-                await using var command = DesignDashboardSp.Create(
-                    connection,
-                    DesignDashboardSp.Actions.GetDesignThumbnails,
-                    CommandTimeoutSeconds);
-
-                AdoNetHelper.AddIntIdListParameter(command, "@DesignIds", batch);
-
                 await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-                await using var reader = await command.ExecuteReaderAsync(
-                    CommandBehavior.SequentialAccess,
-                    cancellationToken).ConfigureAwait(false);
 
-                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                var parameters = DesignDashboardSp.CreateParameters(DesignDashboardSp.Actions.GetDesignThumbnails);
+                DesignDashboardSp.AddDesignIds(parameters, batch);
+
+                var rows = await connection.QueryAsync<ThumbRow>(
+                        new CommandDefinition(
+                            DesignDashboardSp.Name,
+                            parameters,
+                            commandType: CommandType.StoredProcedure,
+                            commandTimeout: CommandTimeoutSeconds,
+                            cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+
+                foreach (var row in rows)
                 {
-                    var designId = reader.GetInt32(0);
-                    if (reader.IsDBNull(1))
+                    if (row.ImgThumbData is { Length: > 0 })
                     {
-                        continue;
+                        result[row.DesignId] = ImageHelper.ToBase64DataUrl(row.ImgThumbData);
                     }
-
-                    var bytes = (byte[])reader[1];
-                    result[designId] = ImageHelper.ToBase64DataUrl(bytes);
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException and not TaskCanceledException)

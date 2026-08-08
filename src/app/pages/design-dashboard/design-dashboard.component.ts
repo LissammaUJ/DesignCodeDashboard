@@ -423,7 +423,8 @@ export class DesignDashboardComponent implements OnInit {
       maximizable: true,
       styleClass: 'design-detail-dialog-wrapper',
       data: {
-        designID: design.designID,
+        // API detail/production expect ProductId (Usp_DesignDashboard_New product Actions).
+        designID: design.productId,
         filter: this.buildFilter(),
       },
     });

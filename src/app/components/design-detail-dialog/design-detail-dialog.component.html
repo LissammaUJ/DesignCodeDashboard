@@ -3,15 +3,6 @@
 
   <header class="detail-dialog__header">
     <div class="detail-dialog__header-main">
-      <div class="detail-dialog__header-thumb" aria-hidden="true">
-        @if (currentImage()) {
-          <img [src]="currentImage()" [alt]="detail()?.designName || detail()?.designCode || 'Design'" />
-        } @else {
-          <div class="detail-dialog__header-thumb-empty">
-            <i class="pi pi-image"></i>
-          </div>
-        }
-      </div>
       <div class="detail-dialog__header-text">
         <p class="detail-dialog__eyebrow">Design Details</p>
         @if (detail(); as d) {
@@ -74,7 +65,8 @@
       <p-button label="Close" icon="pi pi-times" severity="secondary" (onClick)="close()" />
     </div>
   } @else {
-    @if (detail(); as d) {
+    @let d = detail();
+    @if (d) {
     <div class="detail-dialog__body">
       <section class="detail-dialog__gallery" aria-label="Design image">
         <div
@@ -213,7 +205,7 @@
             </div>
             <p-table
               #orderTable
-              [value]="d.orders"
+              [value]="orderRows()"
               [paginator]="true"
               [rows]="8"
               [rowsPerPageOptions]="[8, 15, 25]"

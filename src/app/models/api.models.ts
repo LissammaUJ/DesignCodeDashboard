@@ -48,17 +48,26 @@ export interface DesignSalesPointDto {
 }
 
 export interface DesignDetailDto {
+  /** Incoming card ProductId */
+  productId: number;
   designId: number;
   designCode: string;
   designName: string;
   customerName: string;
+  /** GetProductHeader.ImgThumbData */
   imageThumbnail: string | null;
+  /** GetProductHeader general fields */
+  productName?: string | null;
   categoryName?: string | null;
+  material?: string | null;
+  netWeight?: number | null;
+  currentQuantity?: number | null;
   salesQty: number;
   salesValue: number;
   pendingOrders: number;
   pendingProcess: number;
   lastSoldDate?: string | null;
+  /** GetProductsByDesign only */
   productDetails: ProductDetailDto[];
   accountDetails: AccountDetailDto | null;
   orders?: DesignOrderDto[];

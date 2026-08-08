@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   DestroyRef,
   inject,
   OnInit,
@@ -10,6 +11,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CurrencyPipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { finalize } from 'rxjs/operators';
 import { ButtonModule } from 'primeng/button';
 import { ChartModule } from 'primeng/chart';
 import { DynamicDialogConfig, DynamicDialogRef } from 'primeng/dynamicdialog';
@@ -68,6 +70,8 @@ export class DesignDetailDialogComponent implements OnInit {
   readonly orderTable = viewChild<Table>('orderTable');
 
   readonly detail = signal<DesignDetail | null>(null);
+  /** Reactive table source — avoids stale `@if (...; as d)` / lazy tab bindings. */
+  readonly orderRows = computed(() => this.detail()?.orders ?? []);
   readonly loading = signal(true);
   readonly loadError = signal<string | null>(null);
   readonly activeImageIndex = signal(0);
@@ -136,48 +140,56 @@ export class DesignDetailDialogComponent implements OnInit {
         : undefined;
 
     // Fast popup: load detail only. Production loads when its tab is opened.
+    this.loading.set(true);
+    this.loadError.set(null);
     this.designApi
       .getDesignById(this.designId, apiFilter)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.loading.set(false))
+      )
       .subscribe({
-      next: (detail) => {
-        const mapped = mapDesignDetail(detail);
-        const currentQuantity =
-          Number(detail.inventory?.[0]?.currentStock) ||
-          Number(mapped.general.currentQuantity) ||
-          0;
+        next: (detail) => {
+          const mapped = mapDesignDetail(detail);
+          const orders = mapped.orders ?? [];
+          const inv = detail.inventory?.[0];
+          const invRaw = inv != null ? Number(inv.currentStock) : Number.NaN;
+          const hasInventory = Number.isFinite(invRaw);
 
-        this.detail.set({
-          ...mapped,
-          customerName: mapped.customerName || detail.customerName || detail.accountDetails?.accountName || '-',
-          general: {
-            ...mapped.general,
-            productName: mapped.general.productName || '-',
-            category: mapped.general.category || '-',
-            material: mapped.general.material || '-',
-            currentQuantity,
-          },
-          inventory: { currentStock: currentQuantity },
-          currentStock: currentQuantity,
-          production: [],
-        });
-        this.loading.set(false);
-      },
-      error: (err) => {
-        this.loading.set(false);
-        this.loadError.set(err?.message ?? 'Failed to load design details.');
-        this.messageService.add({
-          severity: 'error',
-          summary: 'Load failed',
-          detail: err?.message ?? 'Unable to load design from API.',
-        });
-      },
-    });
+          this.detail.set({
+            ...mapped,
+            orders,
+            // GetInventory only — do not overwrite mapped stock with a fabricated 0.
+            ...(hasInventory
+              ? {
+                  inventory: { currentStock: invRaw },
+                  currentStock: invRaw,
+                }
+              : {}),
+            // Production loads when its tab opens (SP rows only; never fabricate here).
+            production: [],
+          });
+        },
+        error: (err) => {
+          this.loadError.set(err?.message ?? 'Failed to load design details.');
+          this.messageService.add({
+            severity: 'error',
+            summary: 'Load failed',
+            detail: err?.message ?? 'Unable to load design from API.',
+          });
+        },
+      });
   }
 
   onTabChange(value: string | number | undefined): void {
     const tab = String(value ?? '0');
     this.activeTab.set(tab);
+    // Re-bind a fresh array when Order Details opens (PrimeNG lazy tabpanel + OnPush).
+    if (tab === '2') {
+      this.detail.update((d) =>
+        d ? { ...d, orders: [...(d.orders ?? [])] } : d
+      );
+    }
     if (tab === '3') {
       this.loadProductionOnce();
     }
@@ -337,64 +349,55 @@ export class DesignDetailDialogComponent implements OnInit {
     this.productionLoading.set(true);
     this.designTabsApi
       .getProduction(this.designId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => {
+          this.productionLoading.set(false);
+          this.productionLoaded.set(true);
+        })
+      )
       .subscribe({
-      next: (rows) => {
-        const mapped = this.mapProductionRows(this.designId, rows);
-        this.detail.update((d) => (d ? { ...d, production: mapped } : d));
-        this.productionLoaded.set(true);
-        this.productionLoading.set(false);
-      },
-      error: (err) => {
-        this.detail.update((d) =>
-          d
-            ? {
-                ...d,
-                production: [
-                  {
-                    productionDate: null,
-                    location: '-',
-                    producedQuantity: 0,
-                    requiredQuantity: 0,
-                    rowKey: `${this.designId}-fallback`,
-                  },
-                ],
-              }
-            : d
-        );
-        this.productionLoaded.set(true);
-        this.productionLoading.set(false);
-        this.messageService.add({
-          severity: 'warn',
-          summary: 'Production',
-          detail: err?.message ?? 'Failed to load production records.',
-        });
-      },
-    });
+        next: (rows) => {
+          const mapped = this.mapProductionRows(this.designId, rows);
+          this.detail.update((d) => (d ? { ...d, production: mapped } : d));
+        },
+        error: (err) => {
+          this.detail.update((d) => (d ? { ...d, production: [] } : d));
+          this.messageService.add({
+            severity: 'warn',
+            summary: 'Production',
+            detail: err?.message ?? 'Failed to load production records.',
+          });
+        },
+      });
   }
 
   private mapProductionRows(
     designId: number,
     rows: DesignProductionDto[]
   ): DesignProductionRow[] {
-    const list = (rows ?? []).map((row, index) => ({
-      productionDate: row.productionDate ?? null,
-      location: row.location?.trim() || '-',
-      producedQuantity: Number(row.producedQuantity) || 0,
-      requiredQuantity: Number(row.requiredQuantity) || 0,
-      rowKey: `${designId}-${index}-${row.productionDate ?? ''}-${row.producedQuantity}`,
-    }));
+    const list = (rows ?? [])
+      .filter((row) => {
+        const loc = row.location?.trim() ?? '';
+        const produced = Number(row.producedQuantity) || 0;
+        const required = Number(row.requiredQuantity) || 0;
+        const isPlaceholder =
+          (row.productionDate == null || row.productionDate === '') &&
+          (loc === '' || loc === '-' || loc === '—') &&
+          produced === 0 &&
+          required === 0;
+        return !isPlaceholder;
+      })
+      .map((row, index) => ({
+        productionDate: row.productionDate ?? null,
+        location: row.location?.trim() || '',
+        producedQuantity: Number(row.producedQuantity) || 0,
+        requiredQuantity: Number(row.requiredQuantity) || 0,
+        rowKey: `${designId}-${index}-${row.productionDate ?? ''}-${row.producedQuantity}`,
+      }));
 
     if (list.length === 0) {
-      return [
-        {
-          productionDate: null,
-          location: '-',
-          producedQuantity: 0,
-          requiredQuantity: 0,
-          rowKey: `${designId}-empty`,
-        },
-      ];
+      return [];
     }
 
     return list;

@@ -245,7 +245,7 @@ export function paginateDesignListItems(
 function formatDisplayDate(value: string | Date | null | undefined): string {
   if (value == null || value === '') return NO_DATA;
   const d = typeof value === 'string' ? new Date(value) : value;
-  if (Number.isNaN(d.getTime())) return String(value);
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return String(value);
   return d.toLocaleDateString('en-IN', {
     day: '2-digit',
     month: 'short',
@@ -254,32 +254,63 @@ function formatDisplayDate(value: string | Date | null | undefined): string {
 }
 
 function firstProduct(products: ProductDetailDto[] | undefined): ProductDetailDto | undefined {
-  return products?.find((p) => p.active) ?? products?.[0];
+  // API puts the requested ProductId first; prefer that over another active sibling.
+  return products?.find((p) => Number(p.productId) > 0) ?? products?.[0];
+}
+
+/** Read camelCase or PascalCase array from API JSON (HttpClient does not rename keys). */
+function readApiArray(dto: object, camel: string, pascal: string): Record<string, unknown>[] {
+  const row = dto as Record<string, unknown>;
+  const raw = row[camel] ?? row[pascal];
+  return Array.isArray(raw) ? (raw as Record<string, unknown>[]) : [];
+}
+
+function readApiField(row: Record<string, unknown>, camel: string, pascal: string): unknown {
+  return row[camel] ?? row[pascal];
 }
 
 /** Maps GET /api/design/{id} → design detail dialog model. */
 export function mapDesignDetail(dto: DesignDetailDto): DesignDetail {
-  const image = dto.imageThumbnail?.trim() || '';
-  const product = firstProduct(dto.productDetails);
-  const category = displayDash(dto.categoryName, NO_DATA);
-  const productName = displayDash(product?.productName, NO_DATA);
-  const netWt = product?.netWt != null ? Number(product.netWt) : null;
-  const material = displayDash(product?.composition, '-');
-  const currentStock = Number(dto.inventory?.[0]?.currentStock) || 0;
+  // Detail image = GetProductHeader.ImgThumbData only (same design thumb as card for that ProductId).
+  const image = toCardImageUrl(dto.imageThumbnail);
+  const product =
+    dto.productDetails?.find((p) => Number(p.productId) === Number(dto.productId)) ??
+    firstProduct(dto.productDetails);
+
+  // General Information — header fields from API (GetProductHeader), not invented "-"/0.
+  const productName = dto.productName?.trim() || product?.productName?.trim() || '';
+  const category = dto.categoryName?.trim() || '';
+  const material = dto.material?.trim() || product?.composition?.trim() || '';
+  const netWt =
+    dto.netWeight != null && Number.isFinite(Number(dto.netWeight))
+      ? Number(dto.netWeight)
+      : product?.netWt != null
+        ? Number(product.netWt)
+        : null;
+  const currentQuantity =
+    dto.currentQuantity != null && Number.isFinite(Number(dto.currentQuantity))
+      ? Number(dto.currentQuantity)
+      : null;
+  // Inventory stock: GetInventory row only — never invent a stock value when SP returned no row.
+  const invRow = dto.inventory?.[0] as Record<string, unknown> | undefined;
+  const invRaw =
+    invRow != null ? Number(invRow['currentStock'] ?? invRow['CurrentStock']) : Number.NaN;
+  const hasInventory = Number.isFinite(invRaw);
+  const currentStock = hasInventory ? invRaw : 0;
   const status = product?.active === false ? ('Inactive' as const) : ('Approved' as const);
-  const customerName = displayDash(dto.customerName ?? dto.accountDetails?.accountName, '-');
+  const customerName = dto.customerName?.trim() || dto.accountDetails?.accountName?.trim() || '';
 
   const pendingOrder = toQty(dto.pendingOrders);
   const inProcess = toQty(dto.pendingProcess);
 
   const base: DesignListItem = {
     designID: dto.designId,
-    productId: Number(product?.productId) || 0,
+    productId: Number(dto.productId) || Number(product?.productId) || 0,
     designCode: dto.designCode ?? '',
     designName: dto.designName ?? '',
-    productName: productName === NO_DATA ? '' : productName,
-    customerAccount: customerName === '-' ? '' : customerName,
-    category: category === NO_DATA ? '' : category,
+    productName,
+    customerAccount: customerName,
+    category,
     subCategory: '',
     material,
     purity: '',
@@ -308,48 +339,72 @@ export function mapDesignDetail(dto: DesignDetailDto): DesignDetail {
     isPinned: false,
   };
 
-  const orders: DesignOrderDetail[] = (dto.orders ?? []).map((o) => ({
-    orderNo: o.orderNo ?? '',
-    customer: o.customer ?? '',
-    orderDate: formatDisplayDate(o.orderDate),
-    quantity: Number(o.quantity) || 0,
-    amount: Number(o.amount) || 0,
-  }));
+  // Prefer typed `orders`; fall back to PascalCase `Orders` (same pattern as card KPIs).
+  const orders: DesignOrderDetail[] = readApiArray(dto, 'orders', 'Orders').map((o) => {
+    const orderDate = readApiField(o, 'orderDate', 'OrderDate');
+    return {
+      orderNo: String(readApiField(o, 'orderNo', 'OrderNo') ?? ''),
+      customer: String(readApiField(o, 'customer', 'Customer') ?? ''),
+      orderDate: formatDisplayDate(
+        orderDate instanceof Date || typeof orderDate === 'string' ? orderDate : null
+      ),
+      quantity: toQty(readApiField(o, 'quantity', 'Quantity')),
+      amount: toQty(readApiField(o, 'amount', 'Amount')),
+    };
+  });
 
   return {
     ...base,
-    customerName,
+    customerName: customerName || displayDash(customerName, '-'),
     general: {
-      productName,
-      category,
-      material,
+      productName: productName || displayDash(productName, NO_DATA),
+      category: category || displayDash(category, NO_DATA),
+      material: material || displayDash(material, '-'),
       netWeight: netWt ?? 0,
       status,
-      currentQuantity: currentStock,
+      // General stock = GetProductHeader.CurrentQuantity; inventory.currentStock = GetInventory only.
+      currentQuantity: currentQuantity ?? (hasInventory ? currentStock : 0),
     },
     sales: {
       totalSalesQuantity: Number(dto.salesQty) || 0,
       totalSalesValue: Number(dto.salesValue) || 0,
       lastSoldDate: formatDisplayDate(dto.lastSoldDate),
-      monthlySales: (dto.monthlySales ?? []).map((m) => ({
-        month: m.label,
-        quantity: Number(m.quantity) || 0,
-        value: Number(m.value) || 0,
+      monthlySales: readApiArray(dto, 'monthlySales', 'MonthlySales').map((m) => ({
+        month: String(readApiField(m, 'label', 'Label') ?? ''),
+        quantity: toQty(readApiField(m, 'quantity', 'Quantity')),
+        value: toQty(readApiField(m, 'value', 'Value')),
       })),
-      yearlySales: (dto.yearlySales ?? []).map((y) => ({
-        year: y.label,
-        quantity: Number(y.quantity) || 0,
-        value: Number(y.value) || 0,
+      yearlySales: readApiArray(dto, 'yearlySales', 'YearlySales').map((y) => ({
+        year: String(readApiField(y, 'label', 'Label') ?? ''),
+        quantity: toQty(readApiField(y, 'quantity', 'Quantity')),
+        value: toQty(readApiField(y, 'value', 'Value')),
       })),
     },
     orders,
-    production: (dto.production ?? []).map((row, index) => ({
-      productionDate: row.productionDate ?? null,
-      location: row.location?.trim() || '—',
-      producedQuantity: Number(row.producedQuantity) || 0,
-      requiredQuantity: Number(row.requiredQuantity) || 0,
-      rowKey: `${dto.designId}-${index}`,
-    })),
-    inventory: { currentStock },
+    production: readApiArray(dto, 'production', 'Production')
+      .filter((row) => {
+        const loc = String(readApiField(row, 'location', 'Location') ?? '').trim();
+        const produced = toQty(readApiField(row, 'producedQuantity', 'ProducedQuantity'));
+        const required = toQty(readApiField(row, 'requiredQuantity', 'RequiredQuantity'));
+        const isPlaceholder =
+          (loc === '' || loc === '-' || loc === '—') && produced === 0 && required === 0;
+        return !isPlaceholder;
+      })
+      .map((row, index) => {
+        const productionDate = readApiField(row, 'productionDate', 'ProductionDate');
+        return {
+          productionDate:
+            productionDate instanceof Date
+              ? productionDate.toISOString()
+              : typeof productionDate === 'string'
+                ? productionDate
+                : null,
+          location: String(readApiField(row, 'location', 'Location') ?? '').trim(),
+          producedQuantity: toQty(readApiField(row, 'producedQuantity', 'ProducedQuantity')),
+          requiredQuantity: toQty(readApiField(row, 'requiredQuantity', 'RequiredQuantity')),
+          rowKey: `${dto.designId}-${index}`,
+        };
+      }),
+    inventory: { currentStock: hasInventory ? currentStock : 0 },
   };
 }

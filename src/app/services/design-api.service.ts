@@ -28,6 +28,7 @@ export class DesignApiService {
       params = params.set('endDate', toIsoDate(filter.endDate));
     }
 
+    // Pass-through GET — do not map/strip `orders` or other detail collections.
     return this.http
       .get<DesignDetailDto>(`${this.baseUrl}/${designId}`, { params })
       .pipe(catchError(handleApiError));

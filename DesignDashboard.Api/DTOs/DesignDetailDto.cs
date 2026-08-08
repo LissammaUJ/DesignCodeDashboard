@@ -43,18 +43,29 @@ public class DesignSalesPointDto
 
 public class DesignDetailDto
 {
+    /// <summary>Incoming card ProductId (lookup key).</summary>
+    public int ProductId { get; set; }
     public int DesignId { get; set; }
     public string DesignCode { get; set; } = string.Empty;
     public string DesignName { get; set; } = string.Empty;
     public string CustomerName { get; set; } = string.Empty;
+    /// <summary>GetProductHeader.ImgThumbData only.</summary>
     public string? ImageThumbnail { get; set; }
+
+    // General Information — GetProductHeader fields only
+    public string? ProductName { get; set; }
     public string? CategoryName { get; set; }
+    public string? Material { get; set; }
+    public decimal? NetWeight { get; set; }
+    public decimal? CurrentQuantity { get; set; }
+
     public decimal SalesQty { get; set; }
     public decimal SalesValue { get; set; }
     public decimal PendingOrders { get; set; }
     public decimal PendingProcess { get; set; }
     public DateTime? LastSoldDate { get; set; }
     public decimal AverageSellingPrice { get; set; }
+    /// <summary>GetProductsByDesign rows only (may be empty).</summary>
     public IReadOnlyList<ProductDetailDto> ProductDetails { get; set; } = Array.Empty<ProductDetailDto>();
     public AccountDetailDto? AccountDetails { get; set; }
     public IReadOnlyList<DesignOrderDto> Orders { get; set; } = Array.Empty<DesignOrderDto>();

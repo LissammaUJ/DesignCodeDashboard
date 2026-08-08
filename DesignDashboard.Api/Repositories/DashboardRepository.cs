@@ -1,15 +1,15 @@
 using System.Data;
 using System.Diagnostics;
+using Dapper;
 using DesignDashboard.Api.DTOs;
 using DesignDashboard.Api.Helpers;
 using DesignDashboard.Api.Interfaces;
 using Microsoft.Data.SqlClient;
-using Microsoft.Extensions.Logging;
 
 namespace DesignDashboard.Api.Repositories;
 
 /// <summary>
-/// Dashboard KPI summary (9 cards) — dbo.usp_DesignDashboard (@Action = GetSummary).
+/// Dashboard KPI summary (9 cards) — dbo.Usp_DesignDashboard_New (@Action = GetSummary).
 /// </summary>
 public sealed class DashboardRepository(
     ISqlConnectionFactory connectionFactory,
@@ -48,35 +48,20 @@ public sealed class DashboardRepository(
         var endDate = DateHelper.EndOfDay(filter.EndDate);
 
         await using var connection = (SqlConnection)connectionFactory.CreateConnection();
-        await using var command = DesignDashboardSp.Create(
-            connection, DesignDashboardSp.Actions.GetSummary);
-
-        DesignDashboardSp.AddOptionalInt(command, "@AccountId", accountId);
-        DesignDashboardSp.AddOptionalDateTime(command, "@StartDate", startDate);
-        DesignDashboardSp.AddOptionalDateTime(command, "@EndDate", endDate);
-
         await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-        var list = new List<DashboardSummarySalesRow>();
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-        {
-            list.Add(new DashboardSummarySalesRow
-            {
-                DesignId = reader.GetInt32(reader.GetOrdinal("DesignId")),
-                ProductId = reader.GetInt32(reader.GetOrdinal("ProductId")),
-                DesignCode = reader.GetString(reader.GetOrdinal("DesignCode")),
-                DesignName = reader.GetString(reader.GetOrdinal("DesignName")),
-                TotalSalesQty = reader.GetDecimal(reader.GetOrdinal("TotalSalesQty")),
-                TotalSalesAmount = reader.GetDecimal(reader.GetOrdinal("TotalSalesAmount")),
-                PendingOrder = reader.GetDecimal(reader.GetOrdinal("PendingOrder")),
-                PendingProcess = reader.GetDecimal(reader.GetOrdinal("PendingProcess")),
-                TotalOrderQty = reader.GetDecimal(reader.GetOrdinal("TotalOrderQty")),
-                TotalOrderAmount = reader.GetDecimal(reader.GetOrdinal("TotalOrderAmount")),
-                PendingOrderValue = reader.GetDecimal(reader.GetOrdinal("PendingOrderValue")),
-                CompletedOrderQty = reader.GetDecimal(reader.GetOrdinal("CompletedOrderQty"))
-            });
-        }
+        var parameters = DesignDashboardSp.CreateParameters(DesignDashboardSp.Actions.GetSummary);
+        DesignDashboardSp.AddInt(parameters, "@AccountId", accountId);
+        DesignDashboardSp.AddDateTime(parameters, "@StartDate", startDate);
+        DesignDashboardSp.AddDateTime(parameters, "@EndDate", endDate);
+
+        var list = (await connection.QueryAsync<DashboardSummarySalesRow>(
+                new CommandDefinition(
+                    DesignDashboardSp.Name,
+                    parameters,
+                    commandType: CommandType.StoredProcedure,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false)).ToList();
 
         sw.Stop();
         logger.LogInformation(

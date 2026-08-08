@@ -8,6 +8,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddDesignDashboardServices(this IServiceCollection services)
     {
+        services.AddHttpContextAccessor();
         services.AddSingleton<ISqlConnectionFactory, SqlConnectionFactory>();
 
         // Auth — JWT + dbo.Usp_LoginCheck / dbo.Usp_ComboBind

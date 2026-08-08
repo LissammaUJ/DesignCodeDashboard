@@ -1,26 +1,26 @@
 using System.Data;
-using Microsoft.Data.SqlClient;
+using Dapper;
 
 namespace DesignDashboard.Api.Helpers;
 
 /// <summary>
-/// Builds SqlCommand for dbo.usp_DesignDashboard.
+/// Parameter helpers for dbo.Usp_DesignDashboard_New.
 /// </summary>
 public static class DesignDashboardSp
 {
-    public const string Name = "dbo.usp_DesignDashboard";
+    public const string Name = "dbo.Usp_DesignDashboard_New";
 
     public static class Actions
     {
-        public const string GetActiveCustomers = "GetActiveCustomers";
+        public const string GetCustomers = "GetCustomers";
         public const string GetCustomerSales = "GetCustomerSales";
         public const string GetSummary = "GetSummary";
         public const string GetDesignThumbnails = "GetDesignThumbnails";
         public const string GetAccountDetails = "GetAccountDetails";
-        public const string GetDesignHeader = "GetDesignHeader";
-        public const string GetDesignSales = "GetDesignSales";
+        public const string GetProductHeader = "GetProductHeader";
+        public const string GetProductSales = "GetProductSales";
         public const string GetProductsByDesign = "GetProductsByDesign";
-        public const string GetOrdersByDesign = "GetOrdersByDesign";
+        public const string GetOrdersByProduct = "GetOrdersByProduct";
         public const string GetMonthlySales = "GetMonthlySales";
         public const string GetYearlySales = "GetYearlySales";
         public const string GetLastSold = "GetLastSold";
@@ -28,25 +28,43 @@ public static class DesignDashboardSp
         public const string GetInventory = "GetInventory";
     }
 
-    public static SqlCommand Create(SqlConnection connection, string action, int commandTimeout = 120)
+    public static DynamicParameters CreateParameters(string action)
     {
-        var command = new SqlCommand(Name, connection)
+        var parameters = new DynamicParameters();
+        parameters.Add("@Action", action, DbType.String, size: 50);
+        return parameters;
+    }
+
+    public static void AddInt(DynamicParameters parameters, string name, int value)
+    {
+        parameters.Add(name, value, DbType.Int32);
+    }
+
+    public static void AddDateTime(DynamicParameters parameters, string name, DateTime value)
+    {
+        parameters.Add(name, value, DbType.DateTime);
+    }
+
+    public static void AddOptionalInt(DynamicParameters parameters, string name, int? value)
+    {
+        if (value.HasValue)
         {
-            CommandType = CommandType.StoredProcedure,
-            CommandTimeout = commandTimeout
-        };
-        command.Parameters.Add("@Action", SqlDbType.NVarChar, 50).Value = action;
-        AdoNetHelper.AddIntIdListParameter(command, "@DesignIds", Array.Empty<int>());
-        return command;
+            parameters.Add(name, value.Value, DbType.Int32);
+        }
     }
 
-    public static void AddOptionalInt(SqlCommand command, string name, int? value)
+    public static void AddOptionalDateTime(DynamicParameters parameters, string name, DateTime? value)
     {
-        command.Parameters.Add(name, SqlDbType.Int).Value = value.HasValue ? value.Value : DBNull.Value;
+        if (value.HasValue)
+        {
+            parameters.Add(name, value.Value, DbType.DateTime);
+        }
     }
 
-    public static void AddOptionalDateTime(SqlCommand command, string name, DateTime? value)
+    public static void AddDesignIds(DynamicParameters parameters, IEnumerable<int> ids)
     {
-        command.Parameters.Add(name, SqlDbType.DateTime).Value = value.HasValue ? value.Value : DBNull.Value;
+        parameters.Add(
+            "@DesignIds",
+            AdoNetHelper.CreateIntIdListTable(ids).AsTableValuedParameter(AdoNetHelper.IntIdListTypeName));
     }
 }

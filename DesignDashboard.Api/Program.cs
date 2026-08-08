@@ -152,8 +152,9 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
                 "http://localhost:4200",
-                "http://localhost:5000",
                 "http://localhost:100",
+                "http://localhost:5000",
+                "https://localhost:5000",
                 "http://103.184.242.67:100")
               .AllowAnyHeader()
               .AllowAnyMethod();
@@ -255,5 +256,5 @@ app.MapFallback(async context =>
 });
 
 log.LogInformation(
-    "Starting Kestrel | CORS allows :4200,:5000,:100,103.184.242.67:100 | Public: GET /api/company/list, POST /api/login, POST /api/auth/login");
+    "Starting Kestrel | URLs http://localhost:100 + https://localhost:5000 | CORS :4200,:100,:5000 | Public: GET /api/company/list, POST /api/login, POST /api/auth/login");
 app.Run();

@@ -14,7 +14,7 @@ public sealed class DesignService(IDesignRepository repository) : IDesignService
     {
         if (designId <= 0)
         {
-            throw new ArgumentException("designId must be greater than zero.", nameof(designId));
+            throw new ArgumentException("productId must be greater than zero.", nameof(designId));
         }
 
         DesignFilterRequest? filter = null;
@@ -38,16 +38,7 @@ public sealed class DesignService(IDesignRepository repository) : IDesignService
     {
         if (designId <= 0)
         {
-            return Task.FromResult<IReadOnlyList<DesignProductionDto>>(
-            [
-                new DesignProductionDto
-                {
-                    ProductionDate = null,
-                    Location = "-",
-                    ProducedQuantity = 0,
-                    RequiredQuantity = 0
-                }
-            ]);
+            throw new ArgumentException("productId must be greater than zero.", nameof(designId));
         }
 
         return repository.GetProductionByDesignIdAsync(designId, cancellationToken);
@@ -59,7 +50,7 @@ public sealed class DesignService(IDesignRepository repository) : IDesignService
     {
         if (designId <= 0)
         {
-            return Task.FromResult(DesignInventoryDto.Empty);
+            throw new ArgumentException("productId must be greater than zero.", nameof(designId));
         }
 
         return repository.GetInventoryByDesignIdAsync(designId, cancellationToken);

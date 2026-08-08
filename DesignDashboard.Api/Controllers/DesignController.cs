@@ -40,7 +40,7 @@ public sealed class DesignController(IDesignService designService) : ControllerB
             return NotFound(new ApiErrorResponse
             {
                 StatusCode = StatusCodes.Status404NotFound,
-                Message = $"Design {designId} was not found."
+                Message = $"GetProductHeader returned no row for ProductId={designId}."
             });
         }
 
