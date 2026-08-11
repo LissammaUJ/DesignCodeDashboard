@@ -53,16 +53,6 @@ export class DesignCardComponent {
   readonly inProcessDisplay = computed(() => {
     const c = this.card();
     const value = Number(c.inProcess ?? c.inProcessingQuantity ?? 0);
-    if (c.productId === 257) {
-      console.log('[design-card product 257]', {
-        productId: c.productId,
-        pendingOrder: c.pendingOrder,
-        pendingOrderQuantity: c.pendingOrderQuantity,
-        inProcess: c.inProcess,
-        inProcessingQuantity: c.inProcessingQuantity,
-        displayInProcess: Number.isFinite(value) ? value : 0,
-      });
-    }
     return Number.isFinite(value) ? value : 0;
   });
 

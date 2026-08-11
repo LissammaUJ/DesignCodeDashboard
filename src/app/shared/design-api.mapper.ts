@@ -87,24 +87,6 @@ export function mapCustomerSalesToListItem(dto: CustomerSalesDto): DesignListIte
     isPinned: false,
   };
 
-  if (card.productId === 257) {
-    console.log('[mapCustomerSalesToListItem product 257]', {
-      dtoKeys: Object.keys(row),
-      api: {
-        pendingOrder: apiPendingOrder,
-        pendingProcess: apiPendingProcess,
-        pendingProcessEquals1190: apiPendingProcess === 1190 || Number(apiPendingProcess) === 1190,
-      },
-      mapped: {
-        pendingOrder: card.pendingOrder,
-        pendingOrderQuantity: card.pendingOrderQuantity,
-        inProcess: card.inProcess,
-        inProcessingQuantity: card.inProcessingQuantity,
-        inProcessEquals1190: card.inProcess === 1190,
-      },
-    });
-  }
-
   return card;
 }
 

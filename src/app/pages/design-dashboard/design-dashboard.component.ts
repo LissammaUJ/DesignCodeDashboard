@@ -770,27 +770,9 @@ export class DesignDashboardComponent implements OnInit {
 
   private applyDesignsResult(filter: DesignFilterRequest, dtos: CustomerSalesDto[]): void {
     const list = Array.isArray(dtos) ? dtos : [];
-    const api257 = list.find((d) => Number(d.productId) === 257);
-    console.log('[customer-sales API product 257]', {
-      found: !!api257,
-      pendingOrder: api257?.pendingOrder,
-      pendingProcess: api257?.pendingProcess,
-      pendingProcessEquals1190: api257 != null && Number(api257.pendingProcess) === 1190,
-      raw: api257,
-    });
 
     this.designsError.set(null);
     this.allDesigns = list.map((dto) => mapCustomerSalesToListItem(dto));
-
-    const mapped257 = this.allDesigns.find((c) => c.productId === 257);
-    console.log('[customer-sales mapped product 257]', {
-      found: !!mapped257,
-      pendingOrder: mapped257?.pendingOrder,
-      pendingOrderQuantity: mapped257?.pendingOrderQuantity,
-      inProcess: mapped257?.inProcess,
-      inProcessingQuantity: mapped257?.inProcessingQuantity,
-      inProcessEquals1190: mapped257?.inProcess === 1190,
-    });
 
     this.totalRecords.set(this.allDesigns.length);
     this.currentPage.set(1);

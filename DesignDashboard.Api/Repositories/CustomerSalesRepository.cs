@@ -2,19 +2,25 @@ using System.Diagnostics;
 using DesignDashboard.Api.DTOs;
 using DesignDashboard.Api.Helpers;
 using DesignDashboard.Api.Interfaces;
+using DesignDashboard.Api.Models;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Data.SqlClient;
 
 namespace DesignDashboard.Api.Repositories;
 
 /// <summary>
-/// Dashboard cards — one row per GetCustomerSales product row.
-/// ProductId: SP SELECT omits ProductId; filled from GetSummary (same grain) when missing.
-/// Image: GetCustomerSales.ImgThumbData only (never another design).
+/// Dashboard cards — dbo.Usp_DesignDashboard_New (@Action = GetCustomerSales).
+/// SP adapter: private result row → stable <see cref="CustomerSalesDto"/>.
+/// Grain: ONE ROW PER PRODUCT (never regroup by DesignId).
+/// Product universe matches GetSummary TotalProducts (orders by AccountId/BoDate/CoId);
+/// sales may be zero. ProductId from SP when present; else GetProductsByDesign (DesignId + ProductName).
 /// </summary>
 public sealed class CustomerSalesRepository(
     ISqlConnectionFactory connectionFactory,
+    IHttpContextAccessor httpContextAccessor,
     ILogger<CustomerSalesRepository> logger) : ICustomerSalesRepository
 {
+    /// <summary>Private SP-shaped row. Extra columns ignored; ProductId may be 0/absent.</summary>
     private sealed class CustomerSalesRow
     {
         public int DesignId { get; set; }
@@ -22,20 +28,11 @@ public sealed class CustomerSalesRepository(
         public string DesignCode { get; set; } = string.Empty;
         public string DesignName { get; set; } = string.Empty;
         public string ProductName { get; set; } = string.Empty;
-        public decimal TotalSalesQty { get; set; }
-        public decimal TotalSalesAmount { get; set; }
-        public decimal PendingOrder { get; set; }
-        public decimal PendingProcess { get; set; }
+        public decimal? TotalSalesQty { get; set; }
+        public decimal? TotalSalesAmount { get; set; }
+        public decimal? PendingOrder { get; set; }
+        public decimal? PendingProcess { get; set; }
         public byte[]? ImgThumbData { get; set; }
-    }
-
-    private sealed class SummaryProductRow
-    {
-        public int DesignId { get; set; }
-        public int ProductId { get; set; }
-        public string ProductName { get; set; } = string.Empty;
-        public decimal TotalSalesQty { get; set; }
-        public decimal TotalSalesAmount { get; set; }
     }
 
     public async Task<IReadOnlyList<CustomerSalesDto>> GetCustomerSalesAsync(
@@ -45,6 +42,7 @@ public sealed class CustomerSalesRepository(
         var accountId = filter.CustomerAccountId;
         var startDate = DateHelper.StartOfDay(filter.StartDate);
         var endDate = DateHelper.EndOfDay(filter.EndDate);
+        var coId = CompanyContext.GetRequiredCoId(httpContextAccessor);
         var sw = Stopwatch.StartNew();
 
         try
@@ -56,12 +54,13 @@ public sealed class CustomerSalesRepository(
             SpCallHelper.AddInt(salesParams, "@AccountId", accountId);
             SpCallHelper.AddDateTime(salesParams, "@StartDate", startDate);
             SpCallHelper.AddDateTime(salesParams, "@EndDate", endDate);
+            SpCallHelper.AddInt(salesParams, "@CoId", coId);
 
             logger.LogInformation(
-                "[SP] Action={Action} Params=@AccountId={AccountId},@StartDate,@EndDate",
-                DesignDashboardSp.Actions.GetCustomerSales, accountId);
+                "[SP] Action={Action} Params=@AccountId={AccountId},@CoId={CoId},@StartDate,@EndDate",
+                DesignDashboardSp.Actions.GetCustomerSales, accountId, coId);
 
-            var salesRows = await SpCallHelper.QueryAsync<CustomerSalesRow>(
+            var salesRows = (await SpCallHelper.QueryAsync<CustomerSalesRow>(
                     connection,
                     logger,
                     DesignDashboardSp.Actions.GetCustomerSales,
@@ -70,38 +69,33 @@ public sealed class CustomerSalesRepository(
                     productId: null,
                     designId: null,
                     cancellationToken)
-                .ConfigureAwait(false);
-
-            // One DTO per GetCustomerSales row — never regroup by DesignId.
-            var result = salesRows.Select(r => new CustomerSalesDto
-            {
-                DesignId = r.DesignId,
-                DesignCode = r.DesignCode?.Trim() ?? string.Empty,
-                DesignName = r.DesignName?.Trim() ?? string.Empty,
-                ProductId = r.ProductId,
-                ProductName = SpText(r.ProductName) ?? string.Empty,
-                TotalSalesQty = r.TotalSalesQty,
-                TotalSalesAmount = r.TotalSalesAmount,
-                PendingOrder = r.PendingOrder,
-                PendingProcess = r.PendingProcess,
-                ImageThumbnail = r.ImgThumbData is { Length: > 0 }
-                    ? ImageHelper.ToBase64DataUrl(r.ImgThumbData)
-                    : null
-            }).ToList();
+                .ConfigureAwait(false)).ToList();
 
             logger.LogInformation(
                 "[SP] Action={Action} Rows={Rows}",
-                DesignDashboardSp.Actions.GetCustomerSales, result.Count);
+                DesignDashboardSp.Actions.GetCustomerSales, salesRows.Count);
 
-            if (result.Any(r => r.ProductId <= 0))
+            if (salesRows.Any(r => r.ProductId <= 0))
             {
-                await ApplyProductIdsFromSummaryAsync(
-                        connection, result, accountId, startDate, endDate, cancellationToken)
+                await ApplyProductIdsFromProductsByDesignAsync(
+                        connection, salesRows, cancellationToken)
                     .ConfigureAwait(false);
             }
 
-            // Drop rows that still lack ProductId (cannot open detail without it).
-            result.RemoveAll(r => r.ProductId <= 0);
+            // One card per ProductId (SP should already be unique; guard against fan-out).
+            var result = salesRows
+                .Where(r => r.ProductId > 0)
+                .GroupBy(r => r.ProductId)
+                .Select(g => MapToDto(g.First()))
+                .ToList();
+
+            var dropped = salesRows.Count - result.Count;
+            if (dropped > 0)
+            {
+                logger.LogWarning(
+                    "[CustomerSales] Dropped {Dropped} rows (unresolved ProductId or duplicate ProductId)",
+                    dropped);
+            }
 
             sw.Stop();
             logger.LogInformation(
@@ -120,68 +114,100 @@ public sealed class CustomerSalesRepository(
         }
     }
 
+    /// <summary>SP row → stable public card DTO (renames / NULL / image conversion stay here).</summary>
+    private static CustomerSalesDto MapToDto(CustomerSalesRow r) =>
+        new()
+        {
+            DesignId = r.DesignId,
+            DesignCode = r.DesignCode?.Trim() ?? string.Empty,
+            DesignName = r.DesignName?.Trim() ?? string.Empty,
+            ProductId = r.ProductId,
+            ProductName = SpValueHelper.CleanTextOrEmpty(r.ProductName),
+            TotalSalesQty = SpValueHelper.NonNegative(r.TotalSalesQty),
+            TotalSalesAmount = SpValueHelper.NonNegative(r.TotalSalesAmount),
+            PendingOrder = SpValueHelper.NonNegative(r.PendingOrder),
+            PendingProcess = SpValueHelper.NonNegative(r.PendingProcess),
+            ImageThumbnail = r.ImgThumbData is { Length: > 0 }
+                ? ImageHelper.ToBase64DataUrl(r.ImgThumbData)
+                : null
+        };
+
     /// <summary>
-    /// GetCustomerSales SELECT omits ProductId; GetSummary SELECT includes it (same grain).
+    /// GetCustomerSales SELECT omits ProductId. Resolve via existing GetProductsByDesign:
+    /// DesignId + ProductName → ProductId. Never GetSummary.
     /// </summary>
-    private async Task ApplyProductIdsFromSummaryAsync(
+    private async Task ApplyProductIdsFromProductsByDesignAsync(
         SqlConnection connection,
-        List<CustomerSalesDto> rows,
-        int accountId,
-        DateTime startDate,
-        DateTime endDate,
+        List<CustomerSalesRow> rows,
         CancellationToken cancellationToken)
     {
-        var p = SpCallHelper.Params(DesignDashboardSp.Actions.GetSummary);
-        SpCallHelper.AddInt(p, "@AccountId", accountId);
-        SpCallHelper.AddDateTime(p, "@StartDate", startDate);
-        SpCallHelper.AddDateTime(p, "@EndDate", endDate);
+        var cache = new Dictionary<int, IReadOnlyList<ProductRow>>();
 
-        logger.LogInformation(
-            "[SP] Action={Action} Params=@AccountId={AccountId} (ProductId backfill)",
-            DesignDashboardSp.Actions.GetSummary, accountId);
-
-        var summary = await SpCallHelper.QueryAsync<SummaryProductRow>(
-                connection,
-                logger,
-                DesignDashboardSp.Actions.GetSummary,
-                p,
-                incomingId: null,
-                productId: null,
-                designId: null,
-                cancellationToken)
-            .ConfigureAwait(false);
-
-        logger.LogInformation(
-            "[SP] Action={Action} Rows={Rows}",
-            DesignDashboardSp.Actions.GetSummary, summary.Count);
-
-        foreach (var row in rows.Where(r => r.ProductId <= 0))
+        foreach (var row in rows.Where(r => r.ProductId <= 0 && r.DesignId > 0))
         {
-            var match = summary.FirstOrDefault(s =>
-                s.ProductId > 0
-                && s.DesignId == row.DesignId
-                && s.TotalSalesQty == row.TotalSalesQty
-                && s.TotalSalesAmount == row.TotalSalesAmount
+            if (!cache.TryGetValue(row.DesignId, out var products))
+            {
+                products = await LoadProductsByDesignAsync(connection, row.DesignId, cancellationToken)
+                    .ConfigureAwait(false);
+                cache[row.DesignId] = products;
+            }
+
+            var salesName = NormalizeProductName(row.ProductName);
+            var match = products.FirstOrDefault(p =>
+                p.ProductId > 0
                 && string.Equals(
-                    (s.ProductName ?? string.Empty).Trim(),
-                    (row.ProductName ?? string.Empty).Trim(),
+                    NormalizeProductName(p.ProductName),
+                    salesName,
                     StringComparison.OrdinalIgnoreCase));
 
             if (match is not null)
             {
                 row.ProductId = match.ProductId;
             }
+            else
+            {
+                logger.LogWarning(
+                    "[CustomerSales] ProductId unresolved DesignId={DesignId} ProductName={ProductName}",
+                    row.DesignId,
+                    row.ProductName);
+            }
         }
     }
 
-    private static string? SpText(string? value)
+    private async Task<IReadOnlyList<ProductRow>> LoadProductsByDesignAsync(
+        SqlConnection connection,
+        int designId,
+        CancellationToken cancellationToken)
+    {
+        var p = SpCallHelper.Params(DesignDashboardSp.Actions.GetProductsByDesign);
+        SpCallHelper.AddInt(p, "@DesignId", designId);
+
+        logger.LogInformation(
+            "[SP] Action={Action} DesignId={DesignId} Params=@DesignId={DesignId} (ProductId resolve)",
+            DesignDashboardSp.Actions.GetProductsByDesign, designId, designId);
+
+        var rows = await SpCallHelper.QueryAsync<ProductRow>(
+                connection,
+                logger,
+                DesignDashboardSp.Actions.GetProductsByDesign,
+                p,
+                incomingId: null,
+                productId: null,
+                designId: designId,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        return rows.Where(r => r.ProductId > 0).ToList();
+    }
+
+    private static string NormalizeProductName(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            return null;
+            return string.Empty;
         }
 
         var t = value.Trim();
-        return t is "-" or "—" ? null : t;
+        return t is "-" or "—" ? string.Empty : t;
     }
 }
