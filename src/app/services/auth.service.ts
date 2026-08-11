@@ -59,7 +59,7 @@ export class AuthService {
       companyName: credentials.companyName?.trim() ?? '',
     };
 
-    return this.http.post<LoginResponse>(`${this.apiUrl}/login`, body).pipe(
+    return this.http.post<LoginResponse>(`${this.apiUrl}/Auth/login`, body).pipe(
       tap((res) => this.persistSession(res, rememberMe ? body.emplCode : null)),
       catchError((err) => this.mapHttpError(err, 'Unable to sign in. Check that the API is running.'))
     );
