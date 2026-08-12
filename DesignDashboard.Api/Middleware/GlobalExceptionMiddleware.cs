@@ -21,7 +21,6 @@ public sealed class GlobalExceptionMiddleware(
         }
         catch (Exception ex) when (IsCancellation(ex, context))
         {
-            // Browser/Angular aborted the request (slow query, refresh, HMR). Do not treat as 500.
             logger.LogDebug(
                 ex,
                 "Request cancelled for {Method} {Path}",

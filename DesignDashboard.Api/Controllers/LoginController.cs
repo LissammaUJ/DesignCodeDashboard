@@ -42,7 +42,6 @@ public sealed class LoginController(IAuthService authService, ILogger<LoginContr
             .AuthenticateAsync(request, cancellationToken, clientIp)
             .ConfigureAwait(false);
 
-
         if (result.NoCompanyPermission)
         {
             return StatusCode(StatusCodes.Status403Forbidden, new ApiErrorResponse

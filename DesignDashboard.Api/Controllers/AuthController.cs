@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace DesignDashboard.Api.Controllers;
 
-/// <summary>Backward-compatible auth route. Prefer POST /api/login.</summary>
 [AllowAnonymous]
 [ApiController]
 [Route("api/auth")]
@@ -36,6 +35,7 @@ public sealed class AuthController(IAuthService authService, ILogger<AuthControl
                 string.IsNullOrWhiteSpace(request?.ResolvedEmplCode),
                 string.IsNullOrWhiteSpace(request?.Password),
                 request?.CompanyId);
+
             return BadRequest(new ApiErrorResponse
             {
                 StatusCode = StatusCodes.Status400BadRequest,
@@ -72,10 +72,10 @@ public sealed class AuthController(IAuthService authService, ILogger<AuthControl
             "[Auth] 200 OK — EmplCode={EmplCode} CoId={CoId}",
             result.Response.Username,
             result.Response.Company?.CoId);
+
         return Ok(result.Response);
     }
 
-    /// <summary>POST /api/auth/refresh — rotate refresh token and issue a new access token.</summary>
     [HttpPost("refresh")]
     [ProducesResponseType(typeof(LoginResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
