@@ -131,7 +131,7 @@ export function mapDashboardSummary(dto: DashboardSummaryDto): DashboardKpiSumma
       ),
       kpi(
         'totalOrderSalesValue',
-        'Total Order Sales Value',
+        'Total Order Value',
         dto.totalOrderSalesValue,
         'pi pi-money-bill',
         'linear-gradient(135deg, #6366f1, #4f46e5)',
