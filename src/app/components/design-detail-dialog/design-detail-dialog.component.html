@@ -132,7 +132,7 @@
               </div>
               <div class="detail-dialog__info detail-dialog__info--erp">
                 <label>Net Weight</label>
-                <span>{{ hasNetWeight() ? d.general.netWeight + ' g' : '-' }}</span>
+                <span>{{ hasNetWeight() ? formatNetWeightKg(d.general.netWeight) : '-' }}</span>
               </div>
               <div class="detail-dialog__info detail-dialog__info--erp">
                 <label>Current Quantity</label>

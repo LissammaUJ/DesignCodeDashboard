@@ -239,6 +239,15 @@ export class DesignDetailDialogComponent implements OnInit {
     return d != null && d.general.netWeight > 0;
   }
 
+  /** Display only: API NetWt stays in grams; UI shows kilograms. */
+  formatNetWeightKg(grams: number): string {
+    const kg = grams / 1000;
+    if (Number.isInteger(kg)) {
+      return `${kg} kg`;
+    }
+    return `${kg.toFixed(3)} kg`;
+  }
+
   monthlyChart() {
     const rows = this.detail()?.sales.monthlySales ?? [];
     if (!rows.length) return null;
