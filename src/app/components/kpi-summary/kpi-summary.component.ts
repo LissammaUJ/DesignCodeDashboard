@@ -14,6 +14,8 @@ import { KpiMetric } from '../../core/models/design.models';
 export class KpiSummaryComponent {
   readonly metrics = input<KpiMetric[]>([]);
   readonly loading = input(false);
+  /** When set (and not loading), show a visible error instead of an empty invisible grid. */
+  readonly error = input<string | null>(null);
 
   formatValue(metric: KpiMetric): string {
     if (metric.format === 'currency') {

@@ -156,6 +156,8 @@ export class DesignDashboardComponent implements OnInit {
   readonly pageSizeOptions = PAGE_SIZE_OPTIONS.map((v) => ({ label: String(v), value: v }));
 
   readonly kpiSummary = signal<DashboardKpiSummary | null>(null);
+  /** Set when GET /api/dashboard/summary fails (keeps KPI section visible). */
+  readonly kpiError = signal<string | null>(null);
   readonly designs = signal<DesignListItem[]>([]);
   readonly totalRecords = signal(0);
   readonly loading = signal(false);
@@ -390,6 +392,7 @@ export class DesignDashboardComponent implements OnInit {
     this.hasSearched.set(false);
     this.designsError.set(null);
     this.kpiSummary.set(null);
+    this.kpiError.set(null);
     this.loadCustomers();
     this.messageService.add({ severity: 'secondary', summary: 'Reset', detail: 'Filters cleared.' });
   }
@@ -517,15 +520,31 @@ export class DesignDashboardComponent implements OnInit {
 
     this.kpisTrigger$
       .pipe(
-        tap(() => this.kpiLoading.set(true)),
+        tap(() => {
+          this.kpiLoading.set(true);
+          this.kpiError.set(null);
+          // Clear previous filter's KPIs so Search never shows stale TotalProducts.
+          this.kpiSummary.set(null);
+        }),
         switchMap((filter) =>
           this.dashboardApi.getSummary(filter).pipe(
             takeUntil(this.cancelLoads$),
             catchError((err) => {
+              const message =
+                err?.message ?? 'Failed to load dashboard summary.';
+              console.error('[KPI summary] GET /api/dashboard/summary failed', {
+                status: err?.status,
+                message,
+                details: err?.details,
+                filter,
+              });
+              this.kpiError.set(message);
+              // Do not leave metrics as a silent empty array — clear summary and surface error.
+              this.kpiSummary.set(null);
               this.messageService.add({
                 severity: 'error',
                 summary: 'KPI summary',
-                detail: err?.message ?? 'Failed to load dashboard summary.',
+                detail: message,
               });
               return of(null);
             }),
@@ -535,9 +554,12 @@ export class DesignDashboardComponent implements OnInit {
         takeUntilDestroyed(this.destroyRef)
       )
       .subscribe((dto) => {
-        if (dto) {
-          this.kpiSummary.set(mapDashboardSummary(dto));
+        if (!dto) {
+          return;
         }
+        // Replace signal value (OnPush) — never mutate a previous metrics array in place.
+        this.kpiError.set(null);
+        this.kpiSummary.set(mapDashboardSummary(dto));
       });
 
     this.designsTrigger$
@@ -651,6 +673,7 @@ export class DesignDashboardComponent implements OnInit {
   private clearDashboardStateForCompanyChange(): void {
     this.filterOptions.set({ customers: [] });
     this.kpiSummary.set(null);
+    this.kpiError.set(null);
     this.allDesigns = [];
     this.designs.set([]);
     this.totalRecords.set(0);
@@ -692,15 +715,26 @@ export class DesignDashboardComponent implements OnInit {
 
         this.hasSearched.set(true);
         this.kpiLoading.set(true);
+        this.kpiError.set(null);
+        this.kpiSummary.set(null);
         this.loading.set(true);
 
         return forkJoin({
           summary: this.dashboardApi.getSummary(request).pipe(
             catchError((err) => {
+              const message =
+                err?.message ?? 'Failed to load dashboard summary.';
+              console.error('[KPI summary] GET /api/dashboard/summary failed', {
+                status: err?.status,
+                message,
+                details: err?.details,
+                request,
+              });
+              this.kpiError.set(message);
               this.messageService.add({
                 severity: 'error',
                 summary: 'KPI summary',
-                detail: err?.message ?? 'Failed to load dashboard summary.',
+                detail: message,
               });
               return of(null as DashboardSummaryDto | null);
             })
@@ -717,7 +751,13 @@ export class DesignDashboardComponent implements OnInit {
           ),
         }).pipe(
           tap(({ summary, designs }) => {
-            this.kpiSummary.set(summary ? mapDashboardSummary(summary) : null);
+            if (summary) {
+              this.kpiError.set(null);
+              this.kpiSummary.set(mapDashboardSummary(summary));
+            } else {
+              // Keep section visible via kpiError; do not leave a silent empty metrics grid.
+              this.kpiSummary.set(null);
+            }
             this.applyDesignsResult(request, designs);
           }),
           finalize(() => {

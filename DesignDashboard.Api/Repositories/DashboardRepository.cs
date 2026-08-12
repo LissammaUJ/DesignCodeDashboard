@@ -64,13 +64,30 @@ public sealed class DashboardRepository(
         DesignDashboardSp.AddDateTime(parameters, "@EndDate", endDate);
         DesignDashboardSp.AddInt(parameters, "@CoId", coId);
 
-        var list = (await connection.QueryAsync<DashboardSummarySpRow>(
-                new CommandDefinition(
-                    DesignDashboardSp.Name,
-                    parameters,
-                    commandType: CommandType.StoredProcedure,
-                    cancellationToken: cancellationToken))
-            .ConfigureAwait(false)).ToList();
+        List<DashboardSummarySpRow> list;
+        try
+        {
+            list = (await connection.QueryAsync<DashboardSummarySpRow>(
+                    new CommandDefinition(
+                        DesignDashboardSp.Name,
+                        parameters,
+                        commandType: CommandType.StoredProcedure,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false)).ToList();
+        }
+        catch (SqlException ex)
+        {
+            sw.Stop();
+            logger.LogError(
+                ex,
+                "{Proc} Action={Action} SQL error Number={Number} for AccountId={AccountId} CoId={CoId}",
+                DesignDashboardSp.Name,
+                DesignDashboardSp.Actions.GetSummary,
+                ex.Number,
+                accountId,
+                coId);
+            throw;
+        }
 
         sw.Stop();
 
@@ -84,6 +101,7 @@ public sealed class DashboardRepository(
             list.Count == 1 ? list[0].TotalProducts : null);
 
         // Contract: GetSummary returns exactly one summary row (or none).
+        // Empty result → null → MapToDto yields zeros (safe for UI).
         if (list.Count > 1)
         {
             logger.LogError(

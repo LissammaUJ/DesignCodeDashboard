@@ -6,7 +6,17 @@
       </div>
     }
   </div>
-} @else {
+} @else if (error()) {
+  <div class="kpi-grid kpi-grid--error" role="alert" aria-label="KPI summary error">
+    <div class="kpi-error">
+      <i class="pi pi-exclamation-triangle" aria-hidden="true"></i>
+      <div>
+        <div class="kpi-error__title">Unable to load KPI summary</div>
+        <div class="kpi-error__detail">{{ error() }}</div>
+      </div>
+    </div>
+  </div>
+} @else if (metrics().length > 0) {
   <div class="kpi-grid" role="list" aria-label="Dashboard KPI summary">
     @for (metric of metrics(); track metric.key) {
       <div

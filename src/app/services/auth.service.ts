@@ -59,7 +59,7 @@ export class AuthService {
       companyName: credentials.companyName?.trim() ?? '',
     };
 
-    return this.http.post<LoginResponse>(`${this.apiUrl}/Auth/login`, body).pipe(
+    return this.http.post<LoginResponse>(`${this.apiUrl}/auth/login`, body).pipe(
       tap((res) => this.persistSession(res, rememberMe ? body.emplCode : null)),
       catchError((err) => this.mapHttpError(err, 'Unable to sign in. Check that the API is running.'))
     );
@@ -96,15 +96,23 @@ export class AuthService {
     }
 
     const body: RefreshTokenRequest = { refreshToken };
+    // Assign immediately (before subscribe) so parallel 401s share one refresh.
     this.refreshInFlight$ = this.http
       .post<LoginResponse>(`${this.apiUrl}/auth/refresh`, body)
       .pipe(
         tap((res) => this.persistSession(res, this.getRememberedUsername() || null)),
-        catchError((err) => this.mapHttpError(err, 'Session expired. Please sign in again.')),
+        catchError((err) => {
+          // Refresh token is unusable — clear it so we do not retry a dead token.
+          localStorage.removeItem(REFRESH_TOKEN_KEY);
+          localStorage.removeItem(REFRESH_EXPIRES_KEY);
+          return this.mapHttpError(err, 'Session expired. Please sign in again.');
+        }),
+        // shareReplay before finalize so late subscribers still get the result;
+        // finalize clears the in-flight handle after the shared stream settles.
+        shareReplay({ bufferSize: 1, refCount: false }),
         finalize(() => {
           this.refreshInFlight$ = null;
-        }),
-        shareReplay({ bufferSize: 1, refCount: false })
+        })
       );
 
     return this.refreshInFlight$;
@@ -210,22 +218,28 @@ export class AuthService {
     return this.hasValidAccessToken() || this.hasValidRefreshToken();
   }
 
+  /** Treat access token as expired 60s early to refresh before API 401 storms. */
+  private static readonly ACCESS_SKEW_MS = 60_000;
+
   private hasValidAccessToken(): boolean {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token?.trim()) {
       return false;
     }
 
+    const now = Date.now();
+    const skew = AuthService.ACCESS_SKEW_MS;
+
     const expiresRaw = localStorage.getItem(EXPIRES_KEY);
     if (expiresRaw) {
       const expiresAt = Number(expiresRaw);
-      if (Number.isFinite(expiresAt) && Date.now() >= expiresAt) {
+      if (Number.isFinite(expiresAt) && now >= expiresAt - skew) {
         return false;
       }
     }
 
     const expMs = this.readJwtExpiryMs(token);
-    if (expMs != null && Date.now() >= expMs) {
+    if (expMs != null && now >= expMs - skew) {
       return false;
     }
 

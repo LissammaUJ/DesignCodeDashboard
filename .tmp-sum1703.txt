@@ -1,0 +1,2 @@
+Msg 8134, Level 16, State 1, Server WIN-0C7A1TRB973, Procedure dbo.Usp_DesignDashboard_New, Line 183
+Divide by zero error encountered.

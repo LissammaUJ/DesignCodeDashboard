@@ -43,7 +43,8 @@ builder.Services
     })
     .AddJwtBearer(options =>
     {
-        options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
+        // Symmetric-key JWT (no OIDC metadata). Allow HTTP hosts such as :100.
+        options.RequireHttpsMetadata = false;
         options.SaveToken = true;
         options.TokenValidationParameters = new TokenValidationParameters
         {

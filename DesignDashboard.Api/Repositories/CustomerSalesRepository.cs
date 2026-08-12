@@ -12,8 +12,8 @@ namespace DesignDashboard.Api.Repositories;
 /// Dashboard cards — dbo.Usp_DesignDashboard_New (@Action = GetCustomerSales).
 /// SP adapter: private result row → stable <see cref="CustomerSalesDto"/>.
 /// Grain: ONE ROW PER PRODUCT (never regroup by DesignId).
-/// Product universe matches GetSummary TotalProducts (orders by AccountId/BoDate/CoId);
-/// sales may be zero. ProductId from SP when present; else GetProductsByDesign (DesignId + ProductName).
+/// ProductId: returned by GetCustomerSales when present; otherwise resolved via
+/// GetProductsByDesign (DesignId + ProductName) — avoid N+1 by preferring SP ProductId.
 /// </summary>
 public sealed class CustomerSalesRepository(
     ISqlConnectionFactory connectionFactory,
@@ -77,9 +77,18 @@ public sealed class CustomerSalesRepository(
 
             if (salesRows.Any(r => r.ProductId <= 0))
             {
+                logger.LogWarning(
+                    "[CustomerSales] {Missing} rows missing ProductId — resolving via GetProductsByDesign (slow path)",
+                    salesRows.Count(r => r.ProductId <= 0));
                 await ApplyProductIdsFromProductsByDesignAsync(
                         connection, salesRows, cancellationToken)
                     .ConfigureAwait(false);
+            }
+            else
+            {
+                logger.LogInformation(
+                    "[CustomerSales] ProductId present on all {Rows} rows — skipped GetProductsByDesign",
+                    salesRows.Count);
             }
 
             // One card per ProductId (SP should already be unique; guard against fan-out).
