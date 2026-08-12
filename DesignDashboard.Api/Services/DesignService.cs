@@ -56,6 +56,36 @@ public sealed class DesignService(IDesignRepository repository) : IDesignService
         return repository.GetInventoryByDesignIdAsync(designId, cancellationToken);
     }
 
+    public Task<IReadOnlyList<AccountDetailDto>> GetOtherCustomersByProductIdAsync(
+        int designId,
+        int accountId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken = default)
+    {
+        if (designId <= 0)
+        {
+            throw new ArgumentException("productId must be greater than zero.", nameof(designId));
+        }
+
+        if (accountId <= 0)
+        {
+            throw new ArgumentException("accountId must be greater than zero.", nameof(accountId));
+        }
+
+        if (endDate.Date < startDate.Date)
+        {
+            throw new ArgumentException("endDate cannot be less than startDate.", nameof(endDate));
+        }
+
+        return repository.GetOtherCustomersByProductIdAsync(
+            designId,
+            accountId,
+            startDate,
+            endDate,
+            cancellationToken);
+    }
+
     private static void ValidateFilter(DesignFilterRequest filter)
     {
         if (filter.CustomerAccountId <= 0)

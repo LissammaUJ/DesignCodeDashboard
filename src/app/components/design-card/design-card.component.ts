@@ -66,6 +66,16 @@ export class DesignCardComponent {
     return Number.isFinite(value) ? value : 0;
   });
 
+  readonly orderQtyDisplay = computed(() => {
+    const value = Number(this.card().orderQuantity ?? 0);
+    return Number.isFinite(value) ? value : 0;
+  });
+
+  readonly orderValueDisplay = computed(() => {
+    const value = Number(this.card().orderValue ?? 0);
+    return Number.isFinite(value) ? value : 0;
+  });
+
   onCardClick(): void {
     this.cardClick.emit(this.card());
   }

@@ -13,6 +13,10 @@ public class CustomerSalesDto
     /// <summary>Unique card key — Product.ProductId.</summary>
     public int ProductId { get; set; }
     public string ProductName { get; set; } = string.Empty;
+    /// <summary>Product-level order qty from GetCustomerSales (TotalOrderQty).</summary>
+    public decimal TotalOrderQty { get; set; }
+    /// <summary>Product-level order value from GetCustomerSales (TotalOrderValue).</summary>
+    public decimal TotalOrderValue { get; set; }
     public decimal TotalSalesQty { get; set; }
     public decimal TotalSalesAmount { get; set; }
 

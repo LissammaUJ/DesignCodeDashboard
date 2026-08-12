@@ -1,9 +1,9 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, catchError } from 'rxjs';
 import { environment } from '../environments/environment';
-import { DesignInventoryDto, DesignProductionDto } from '../models/api.models';
-import { handleApiError } from '../shared/api.utils';
+import { AccountDetailDto, DesignInventoryDto, DesignProductionDto } from '../models/api.models';
+import { handleApiError, toIsoDate } from '../shared/api.utils';
 
 @Injectable({ providedIn: 'root' })
 export class DesignTabsApiService {
@@ -21,6 +21,26 @@ export class DesignTabsApiService {
   getInventory(designId: number): Observable<DesignInventoryDto> {
     return this.http
       .get<DesignInventoryDto>(`${this.baseUrl}/${designId}/inventory`)
+      .pipe(catchError(handleApiError));
+  }
+
+  /**
+   * GET /api/designs/{productId}/other-customers — GetOtherCustomers SP action.
+   * Excludes the selected account; filtered by selected date range.
+   */
+  getOtherCustomers(
+    productId: number,
+    accountId: number,
+    startDate: string | Date,
+    endDate: string | Date
+  ): Observable<AccountDetailDto[]> {
+    const params = new HttpParams()
+      .set('accountId', String(accountId))
+      .set('startDate', toIsoDate(startDate))
+      .set('endDate', toIsoDate(endDate));
+
+    return this.http
+      .get<AccountDetailDto[]>(`${this.baseUrl}/${productId}/other-customers`, { params })
       .pipe(catchError(handleApiError));
   }
 }

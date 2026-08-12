@@ -43,6 +43,30 @@
 
       <div class="design-card__kpis" role="group" aria-label="Business KPIs">
         <div
+          class="kpi-tile kpi-tile--slate"
+          [pTooltip]="'Order Quantity: ' + (orderQtyDisplay() | number: '1.0-2')"
+          tooltipPosition="top"
+        >
+          <div class="kpi-tile__top">
+            <i class="kpi-tile__icon pi pi-shopping-cart" aria-hidden="true"></i>
+            <span class="kpi-tile__label">Order Qty</span>
+          </div>
+          <strong class="kpi-tile__value">{{ orderQtyDisplay() | number: '1.0-2' }}</strong>
+        </div>
+
+        <div
+          class="kpi-tile kpi-tile--indigo"
+          [pTooltip]="'Order Value: ' + formatCompactCurrency(orderValueDisplay())"
+          tooltipPosition="top"
+        >
+          <div class="kpi-tile__top">
+            <i class="kpi-tile__icon pi pi-indian-rupee" aria-hidden="true"></i>
+            <span class="kpi-tile__label">Order Value</span>
+          </div>
+          <strong class="kpi-tile__value">{{ formatCompactCurrency(orderValueDisplay()) }}</strong>
+        </div>
+
+        <div
           class="kpi-tile kpi-tile--blue"
           [pTooltip]="'Total Sales Quantity: ' + (salesQtyDisplay() | number: '1.0-2')"
           tooltipPosition="top"

@@ -12,7 +12,7 @@
   outline: none;
   width: 100%;
   height: 100%;
-  min-height: 470px;
+  min-height: 520px;
 
   &:focus-visible ::ng-deep .design-card {
     box-shadow: 0 0 0 3px rgba($primary, 0.35), $card-shadow-hover;
@@ -167,23 +167,32 @@
 .design-card__kpis {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
   gap: 10px;
   flex: 0 0 auto;
+
+  @media (max-width: 380px) {
+    grid-template-columns: 1fr;
+  }
 }
 
 .kpi-tile {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  min-height: 64px;
-  padding: 10px;
+  height: 100%;
+  min-height: 68px;
+  padding: 10px 11px;
   border-radius: 12px;
+  border: 1px solid transparent;
   min-width: 0;
   box-sizing: border-box;
-  transition: transform 180ms ease;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: transform 180ms ease, box-shadow 180ms ease;
 
   &:hover {
     transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
   }
 
   &__top {
@@ -194,7 +203,7 @@
   }
 
   &__icon {
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     line-height: 1;
     flex-shrink: 0;
     opacity: 0.9;
@@ -205,39 +214,56 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.03em;
-    opacity: 0.8;
+    opacity: 0.82;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   &__value {
-    font-size: 1.125rem;
+    margin-top: 0.35rem;
+    font-size: clamp(0.875rem, 2.4vw, 1.0625rem);
     font-weight: 700;
-    line-height: 1.1;
+    line-height: 1.15;
     letter-spacing: -0.02em;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
+  &--slate {
+    background: $gray-100;
+    border-color: rgba($gray-300, 0.65);
+    color: $gray-800;
+  }
+
+  &--indigo {
+    background: rgba($primary-light, 0.85);
+    border-color: rgba($primary, 0.22);
+    color: $primary-dark;
+  }
+
   &--blue {
     background: $primary-light;
+    border-color: rgba($primary, 0.18);
     color: $primary-dark;
   }
 
   &--purple {
     background: $purple-light;
+    border-color: rgba($purple, 0.18);
     color: $purple;
   }
 
   &--orange {
     background: $warning-light;
+    border-color: rgba($warning, 0.2);
     color: $warning;
   }
 
   &--green {
     background: $success-light;
+    border-color: rgba($success, 0.2);
     color: $success;
   }
 }

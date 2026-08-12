@@ -117,6 +117,8 @@ export interface CustomerSalesDto {
   /** Unique card key */
   productId: number;
   productName?: string;
+  totalOrderQty: number;
+  totalOrderValue: number;
   totalSalesQty: number;
   totalSalesAmount: number;
   pendingOrder: number;

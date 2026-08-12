@@ -220,6 +220,42 @@ public sealed class DesignRepository(
         return rows[0];
     }
 
+    public async Task<IReadOnlyList<AccountDetailDto>> GetOtherCustomersByProductIdAsync(
+        int designId,
+        int accountId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken = default)
+    {
+        var productId = designId;
+        if (productId <= 0)
+        {
+            throw new ArgumentException("productId must be greater than zero.", nameof(designId));
+        }
+
+        if (accountId <= 0)
+        {
+            throw new ArgumentException("accountId must be greater than zero.", nameof(accountId));
+        }
+
+        if (endDate.Date < startDate.Date)
+        {
+            throw new ArgumentException("endDate cannot be less than startDate.", nameof(endDate));
+        }
+
+        await using var connection = (SqlConnection)connectionFactory.CreateConnection();
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        return await CallOtherCustomersAsync(
+                connection,
+                productId,
+                accountId,
+                DateHelper.StartOfDay(startDate),
+                DateHelper.EndOfDay(endDate),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     // ─── SP callers ────────────────────────────────────────────────────────
 
     private async Task<DesignHeaderRow?> CallProductHeaderAsync(
@@ -506,6 +542,49 @@ public sealed class DesignRepository(
             DesignDashboardSp.Actions.GetAccountDetails, productId, designId, row is null ? 0 : 1);
 
         return row;
+    }
+
+    private async Task<IReadOnlyList<AccountDetailDto>> CallOtherCustomersAsync(
+        SqlConnection connection,
+        int productId,
+        int accountId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken ct)
+    {
+        var p = SpCallHelper.Params(DesignDashboardSp.Actions.GetOtherCustomers);
+        SpCallHelper.AddInt(p, "@ProductId", productId);
+        SpCallHelper.AddInt(p, "@AccountId", accountId);
+        SpCallHelper.AddDateTime(p, "@StartDate", startDate);
+        SpCallHelper.AddDateTime(p, "@EndDate", endDate);
+
+        logger.LogInformation(
+            "[SP] Action={Action} ProductId={ProductId} Params=@ProductId={ProductId},@AccountId={AccountId},@StartDate,@EndDate",
+            DesignDashboardSp.Actions.GetOtherCustomers, productId, productId, accountId);
+
+        var rows = await SpCallHelper.QueryAsync<AccountRow>(
+            connection, logger, DesignDashboardSp.Actions.GetOtherCustomers, p,
+            productId, productId, null, ct).ConfigureAwait(false);
+
+        var mapped = rows
+            .Where(r => r.AccountId > 0)
+            .Select(r => new AccountDetailDto
+            {
+                AccountId = r.AccountId,
+                AccountName = TrimOrEmpty(r.AccountName),
+                AccountCode = TrimOrNull(r.AccountCode),
+                Address = TrimOrNull(r.Address),
+                Email = TrimOrNull(r.Email),
+                TelNo = TrimOrNull(r.TelNo),
+                GstNo = TrimOrNull(r.GstNo)
+            })
+            .ToList();
+
+        logger.LogInformation(
+            "[SP] Action={Action} ProductId={ProductId} AccountId={AccountId} SpRows={SpRows} MappedRows={MappedRows}",
+            DesignDashboardSp.Actions.GetOtherCustomers, productId, accountId, rows.Count, mapped.Count);
+
+        return mapped;
     }
 
     private void WarnBadProductDetails(

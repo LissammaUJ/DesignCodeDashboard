@@ -45,6 +45,10 @@ export interface DesignListItem {
   netWeight: number;
   stoneWeight: number;
   makingCharge: number;
+  /** Product-level order qty from customer-sales TotalOrderQty. */
+  orderQuantity: number;
+  /** Product-level order value from customer-sales TotalOrderValue. */
+  orderValue: number;
   salesQuantity: number;
   totalSalesValue: number;
   /** Pending order qty (from API pendingOrder). */

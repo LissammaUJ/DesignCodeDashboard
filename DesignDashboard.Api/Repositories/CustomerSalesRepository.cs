@@ -28,6 +28,8 @@ public sealed class CustomerSalesRepository(
         public string DesignCode { get; set; } = string.Empty;
         public string DesignName { get; set; } = string.Empty;
         public string ProductName { get; set; } = string.Empty;
+        public decimal? TotalOrderQty { get; set; }
+        public decimal? TotalOrderValue { get; set; }
         public decimal? TotalSalesQty { get; set; }
         public decimal? TotalSalesAmount { get; set; }
         public decimal? PendingOrder { get; set; }
@@ -132,6 +134,8 @@ public sealed class CustomerSalesRepository(
             DesignName = r.DesignName?.Trim() ?? string.Empty,
             ProductId = r.ProductId,
             ProductName = SpValueHelper.CleanTextOrEmpty(r.ProductName),
+            TotalOrderQty = SpValueHelper.NonNegative(r.TotalOrderQty),
+            TotalOrderValue = SpValueHelper.NonNegative(r.TotalOrderValue),
             TotalSalesQty = SpValueHelper.NonNegative(r.TotalSalesQty),
             TotalSalesAmount = SpValueHelper.NonNegative(r.TotalSalesAmount),
             PendingOrder = SpValueHelper.NonNegative(r.PendingOrder),

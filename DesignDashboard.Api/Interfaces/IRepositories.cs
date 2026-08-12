@@ -24,6 +24,17 @@ public interface IDesignRepository
     Task<DesignInventoryDto> GetInventoryByDesignIdAsync(
         int designId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Other customers for a product (GetOtherCustomers) — excludes the selected AccountId.
+    /// Incoming <paramref name="designId"/> is ProductId (same route convention as production).
+    /// </summary>
+    Task<IReadOnlyList<AccountDetailDto>> GetOtherCustomersByProductIdAsync(
+        int designId,
+        int accountId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IDashboardRepository

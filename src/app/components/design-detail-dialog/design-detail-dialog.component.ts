@@ -26,7 +26,7 @@ import { SkeletonModule } from 'primeng/skeleton';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { MessageService } from 'primeng/api';
 import { DesignDetail, DesignFilter, DesignProductionRow } from '../../core/models/design.models';
-import { DesignProductionDto } from '../../models/api.models';
+import { AccountDetailDto, DesignProductionDto } from '../../models/api.models';
 import { DesignApiService } from '../../services/design-api.service';
 import { DesignTabsApiService } from '../../services/design-tabs-api.service';
 import { mapDesignDetail } from '../../shared/design-api.mapper';
@@ -79,8 +79,17 @@ export class DesignDetailDialogComponent implements OnInit {
   readonly activeTab = signal('0');
   readonly productionLoading = signal(false);
   readonly productionLoaded = signal(false);
+  readonly otherCustomers = signal<AccountDetailDto[]>([]);
+  readonly otherCustomersLoading = signal(false);
+  readonly otherCustomersLoaded = signal(false);
+  readonly otherCustomersError = signal<string | null>(null);
+  /** Toggle: temporary Other Customers tab visibility (hidden by default). */
+  readonly showOtherCustomers = signal(false);
 
   private designId = 0;
+  private filter: DesignFilter | undefined;
+  /** Tab to restore when Other Customers is toggled off. */
+  private previousTab = '0';
 
   readonly barOpts = {
     responsive: true,
@@ -122,7 +131,7 @@ export class DesignDetailDialogComponent implements OnInit {
 
   ngOnInit(): void {
     this.designId = this.config.data?.designID as number;
-    const filter = this.config.data?.filter as DesignFilter | undefined;
+    this.filter = this.config.data?.filter as DesignFilter | undefined;
 
     if (!this.designId) {
       this.loading.set(false);
@@ -131,15 +140,15 @@ export class DesignDetailDialogComponent implements OnInit {
     }
 
     const apiFilter =
-      filter?.customerAccountId != null && filter.startDate && filter.endDate
+      this.filter?.customerAccountId != null && this.filter.startDate && this.filter.endDate
         ? {
-            customerAccountId: filter.customerAccountId,
-            startDate: filter.startDate,
-            endDate: filter.endDate,
+            customerAccountId: this.filter.customerAccountId,
+            startDate: this.filter.startDate,
+            endDate: this.filter.endDate,
           }
         : undefined;
 
-    // Fast popup: load detail only. Production loads when its tab is opened.
+    // Fast popup: load detail only. Production / Other Customers load when their tabs open.
     this.loading.set(true);
     this.loadError.set(null);
     this.designApi
@@ -185,14 +194,33 @@ export class DesignDetailDialogComponent implements OnInit {
     const tab = String(value ?? '0');
     this.activeTab.set(tab);
     // Re-bind a fresh array when Order Details opens (PrimeNG lazy tabpanel + OnPush).
-    if (tab === '2') {
+    if (tab === '1') {
       this.detail.update((d) =>
         d ? { ...d, orders: [...(d.orders ?? [])] } : d
       );
     }
-    if (tab === '3') {
+    if (tab === '2') {
       this.loadProductionOnce();
     }
+    if (tab === '4') {
+      this.loadOtherCustomersOnce();
+    }
+  }
+
+  /** Toggle temporary Other Customers tab; does not reload View Details data. */
+  toggleOtherCustomers(): void {
+    if (this.showOtherCustomers()) {
+      this.showOtherCustomers.set(false);
+      const restore = this.previousTab === '4' ? '0' : this.previousTab;
+      this.activeTab.set(restore);
+      return;
+    }
+
+    const current = this.activeTab();
+    this.previousTab = current === '4' ? '0' : current;
+    this.showOtherCustomers.set(true);
+    this.activeTab.set('4');
+    this.loadOtherCustomersOnce();
   }
 
   close(): void {
@@ -379,6 +407,76 @@ export class DesignDetailDialogComponent implements OnInit {
           });
         },
       });
+  }
+
+  private loadOtherCustomersOnce(): void {
+    if (this.otherCustomersLoaded() || this.otherCustomersLoading() || !this.designId) {
+      return;
+    }
+
+    const accountId = Number(this.filter?.customerAccountId);
+    const startDate = this.filter?.startDate;
+    const endDate = this.filter?.endDate;
+
+    if (!Number.isFinite(accountId) || accountId <= 0 || !startDate || !endDate) {
+      this.otherCustomers.set([]);
+      this.otherCustomersLoaded.set(true);
+      this.otherCustomersError.set(
+        'Customer and date range are required to load other customers.'
+      );
+      return;
+    }
+
+    this.otherCustomersLoading.set(true);
+    this.otherCustomersError.set(null);
+    // designId in this dialog is ProductId (card grain) — matches SP @ProductId.
+    this.designTabsApi
+      .getOtherCustomers(this.designId, accountId, startDate, endDate)
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => {
+          this.otherCustomersLoading.set(false);
+          this.otherCustomersLoaded.set(true);
+        })
+      )
+      .subscribe({
+        next: (rows) => {
+          const list = Array.isArray(rows) ? rows : [];
+          // Map SP GetOtherCustomers fields; exclude selected customer as a guard.
+          const mapped = list
+            .map((row) => {
+              const r = row as AccountDetailDto & Record<string, unknown>;
+              return {
+                accountId: Number(r.accountId ?? r['AccountId'] ?? 0),
+                accountName: String(r.accountName ?? r['AccountName'] ?? ''),
+                accountCode: (r.accountCode ?? r['AccountCode'] ?? null) as string | null,
+                address: (r.address ?? r['Address'] ?? null) as string | null,
+                email: (r.email ?? r['Email'] ?? null) as string | null,
+                telNo: (r.telNo ?? r['TelNo'] ?? null) as string | null,
+                gstNo: (r.gstNo ?? r['GstNo'] ?? null) as string | null,
+              } satisfies AccountDetailDto;
+            })
+            .filter((c) => c.accountId > 0 && c.accountId !== accountId);
+
+          this.otherCustomers.set(mapped);
+        },
+        error: (err) => {
+          this.otherCustomers.set([]);
+          this.otherCustomersError.set(
+            err?.message ?? 'Failed to load other customers.'
+          );
+          this.messageService.add({
+            severity: 'warn',
+            summary: 'Other Customers',
+            detail: err?.message ?? 'Failed to load other customers.',
+          });
+        },
+      });
+  }
+
+  displayAccountField(value: string | null | undefined): string {
+    const t = value?.trim() ?? '';
+    return !t || t === '-' || t === '—' ? '—' : t;
   }
 
   private mapProductionRows(

@@ -26,6 +26,7 @@ public static class DesignDashboardSp
         public const string GetLastSold = "GetLastSold";
         public const string GetProduction = "GetProduction";
         public const string GetInventory = "GetInventory";
+        public const string GetOtherCustomers = "GetOtherCustomers";
     }
 
     public static DynamicParameters CreateParameters(string action)

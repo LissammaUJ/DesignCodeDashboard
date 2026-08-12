@@ -26,6 +26,13 @@ public interface IDesignService
     Task<DesignInventoryDto> GetInventoryByDesignIdAsync(
         int designId,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<AccountDetailDto>> GetOtherCustomersByProductIdAsync(
+        int designId,
+        int accountId,
+        DateTime startDate,
+        DateTime endDate,
+        CancellationToken cancellationToken = default);
 }
 
 public interface IDashboardService
